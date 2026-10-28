@@ -38,7 +38,7 @@ export function CommentSheet({ path, line, onCancel, onSubmit }: Props) {
             <span className="code">{line.text}</span>
           </div>
         ) : (
-          <div className="hint">Komentarz do całego pliku. Stuknij linię w diffie, żeby skomentować konkretną.</div>
+          <div className="hint">Komentarz do całego pliku.</div>
         )}
         <div className="chips">
           <button onClick={() => insert('nit: ')}>nit</button>

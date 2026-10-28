@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CommentSheet } from '../components/CommentSheet';
-import { DiffView } from '../components/DiffView';
+import { DiffView, InlineNote } from '../components/DiffView';
 import { SwipeCard } from '../components/SwipeCard';
 import { diffStats, parseDiff, type DiffLine } from '../diff';
 import { ApiError, type DraftNote, type FileDiff, type GitLab, type MergeRequest, type Position } from '../gitlab';
@@ -28,13 +28,22 @@ function draftsForFile(drafts: DraftNote[], file: FileDiff) {
   return drafts.filter((d) => d.position?.new_path === file.new_path || d.position?.old_path === file.old_path);
 }
 
+const hasTextDiff = (file: FileDiff) => !file.too_large && !file.collapsed && !!file.diff;
+
+function isOnLine(d: DraftNote, l: DiffLine) {
+  if (l.type === 'del') return d.position?.old_line === l.oldLine && !d.position?.new_line;
+  return l.newLine !== undefined && d.position?.new_line === l.newLine;
+}
+
 export function Deck({ api, mrs, onExit }: Props) {
   const [mergeRequests, setMergeRequests] = useState<MergeRequest[]>([]);
   const [cards, setCards] = useState<Card[] | null>(null);
   const [drafts, setDrafts] = useState<Record<string, DraftNote[]>>({});
   const [index, setIndex] = useState(0);
-  const [selected, setSelected] = useState<number | null>(null);
-  const [commenting, setCommenting] = useState(false);
+  const [picking, setPicking] = useState(false);
+  // undefined = no comment sheet, null = comment on the whole file, number = index of the diff line
+  const [commentAt, setCommentAt] = useState<number | null | undefined>(undefined);
+  const commenting = commentAt !== undefined;
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
@@ -74,27 +83,35 @@ export function Deck({ api, mrs, onExit }: Props) {
   const next = useCallback(() => {
     if (!card) return;
     setViewed(card.mr, card.file.new_path, card.hash);
-    setSelected(null);
+    setPicking(false);
     setIndex((i) => i + 1);
+  }, [card]);
+
+  // No diff lines to pick from (binary/too large) -> comment on the whole file right away.
+  const startComment = useCallback(() => {
+    if (card && hasTextDiff(card.file)) setPicking(true);
+    else setCommentAt(null);
   }, [card]);
 
   const undo = () => {
     if (!cards || index === 0) return;
     const prev = cards[index - 1];
     setViewed(prev.mr, prev.file.new_path, null);
-    setSelected(null);
+    setPicking(false);
     setIndex(index - 1);
   };
 
   useEffect(() => {
     if (commenting || !card) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowRight') next();
-      else if (e.key === 'ArrowLeft') setCommenting(true);
+      if (e.key === 'Escape') setPicking(false);
+      else if (picking) return;
+      else if (e.key === 'ArrowRight') next();
+      else if (e.key === 'ArrowLeft') startComment();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [card, commenting, next]);
+  }, [card, commenting, picking, next, startComment]);
 
   const fileDrafts = useMemo(() => (card ? draftsForFile(drafts[mrKey(card.mr)] ?? [], card.file) : []), [card, drafts]);
 
@@ -124,30 +141,36 @@ export function Deck({ api, mrs, onExit }: Props) {
     );
   }
 
-  const selectedLine = selected === null ? null : card.lines[selected];
+  const commentLine = commentAt == null ? null : card.lines[commentAt];
   const { added, removed } = diffStats(card.lines);
   const { file, mr } = card;
 
   const addComment = async (text: string) => {
     let note: DraftNote;
     try {
-      note = await api.createDraftNote(mr, text, buildPosition(mr, file, selectedLine));
+      note = await api.createDraftNote(mr, text, buildPosition(mr, file, commentLine));
     } catch (e) {
       // File-level positions need a recent GitLab; fall back to a general comment naming the file.
-      if (selectedLine || !(e instanceof ApiError) || e.status !== 400) throw e;
+      if (commentLine || !(e instanceof ApiError) || e.status !== 400) throw e;
       note = await api.createDraftNote(mr, `**\`${file.new_path}\`**\n\n${text}`);
       note.position = { old_path: file.old_path, new_path: file.new_path };
     }
     setDrafts((d) => ({ ...d, [mrKey(mr)]: [...(d[mrKey(mr)] ?? []), note] }));
-    setCommenting(false);
-    setSelected(null);
+    setCommentAt(undefined);
     setToast('Komentarz dodany do review');
   };
 
-  const commented = (l: DiffLine) =>
-    fileDrafts.some((d) =>
-      l.type === 'del' ? d.position?.old_line === l.oldLine && !d.position?.new_line : l.newLine !== undefined && d.position?.new_line === l.newLine,
-    );
+  const deleteNote = async (note: DraftNote) => {
+    if (!confirm('Usunąć ten komentarz z review?')) return;
+    try {
+      await api.deleteDraftNote(mr, note.id);
+      setDrafts((d) => ({ ...d, [mrKey(mr)]: d[mrKey(mr)].filter((n) => n.id !== note.id) }));
+    } catch (e) {
+      setToast(`Nie udało się usunąć: ${e instanceof Error ? e.message : e}`);
+    }
+  };
+
+  const fileNotes = fileDrafts.filter((d) => !d.position?.new_line && !d.position?.old_line);
 
   return (
     <div className="screen deck">
@@ -168,7 +191,14 @@ export function Deck({ api, mrs, onExit }: Props) {
 
       <div className="stack">
         {index + 1 < cards.length && <div className="swipe-card ghost" />}
-        <SwipeCard key={index} onSwipeRight={next} onSwipeLeft={() => setCommenting(true)} rightLabel="VIEWED" leftLabel="KOMENTARZ">
+        <SwipeCard
+          key={index}
+          onSwipeRight={next}
+          onSwipeLeft={startComment}
+          rightLabel="VIEWED"
+          leftLabel="KOMENTARZ"
+          disabled={picking}
+        >
           <div className="card-head">
             {mergeRequests.length > 1 && <div className="meta">{mr.references.full}</div>}
             <div className="path">
@@ -180,8 +210,11 @@ export function Deck({ api, mrs, onExit }: Props) {
               <span className="plus">+{added}</span> <span className="minus">−{removed}</span>
               {fileDrafts.length > 0 && <span className="badge">💬 {fileDrafts.length}</span>}
             </div>
+            {fileNotes.map((n) => (
+              <InlineNote key={n.id} note={n} onDelete={() => deleteNote(n)} />
+            ))}
           </div>
-          {file.too_large || file.collapsed || !file.diff ? (
+          {!hasTextDiff(file) ? (
             <div className="empty">
               {file.diff ? 'Diff za duży do pokazania.' : 'Brak diffu tekstowego (plik binarny / zmiana uprawnień).'}{' '}
               <a href={`${mr.web_url}/diffs`} target="_blank" rel="noreferrer">
@@ -189,7 +222,22 @@ export function Deck({ api, mrs, onExit }: Props) {
               </a>
             </div>
           ) : (
-            <DiffView lines={card.lines} selected={selected} onSelect={setSelected} commented={commented} />
+            <DiffView
+              lines={card.lines}
+              notesFor={(l) => fileDrafts.filter((d) => isOnLine(d, l))}
+              onDeleteNote={deleteNote}
+              picking={picking}
+              onPick={(i) => {
+                setPicking(false);
+                setCommentAt(i);
+              }}
+              onPickFile={() => {
+                setPicking(false);
+                setCommentAt(null);
+              }}
+              onCancelPick={() => setPicking(false)}
+              highlight={commentAt ?? null}
+            />
           )}
         </SwipeCard>
       </div>
@@ -198,7 +246,11 @@ export function Deck({ api, mrs, onExit }: Props) {
         <button className="round" onClick={undo} disabled={index === 0} title="Cofnij">
           ↶
         </button>
-        <button className="round comment" onClick={() => setCommenting(true)} title="Komentarz (←)">
+        <button
+          className={`round comment${picking ? ' on' : ''}`}
+          onClick={() => (picking ? setPicking(false) : startComment())}
+          title="Komentarz (←)"
+        >
           💬
         </button>
         <button className="round ok" onClick={next} title="Viewed (→)">
@@ -209,7 +261,7 @@ export function Deck({ api, mrs, onExit }: Props) {
       {toast && <div className="toast">{toast}</div>}
 
       {commenting && (
-        <CommentSheet path={file.new_path} line={selectedLine} onCancel={() => setCommenting(false)} onSubmit={addComment} />
+        <CommentSheet path={file.new_path} line={commentLine} onCancel={() => setCommentAt(undefined)} onSubmit={addComment} />
       )}
     </div>
   );

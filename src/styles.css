@@ -361,12 +361,88 @@ code {
 .diff-line.meta {
   color: var(--muted);
 }
-.diff-line.selected {
+.diff-wrap {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.diff.picking {
+  touch-action: none;
+  cursor: crosshair;
+}
+.diff.picking .diff-line:not([data-line]) {
+  opacity: 0.4;
+}
+.diff-line.active {
   outline: 2px solid var(--warn);
   outline-offset: -2px;
 }
-.note-marker {
-  margin-right: 4px;
+.diff-line.active .ln {
+  background: var(--warn);
+  color: #000;
+  opacity: 1;
+  font-weight: 700;
+}
+.pick-bar {
+  background: var(--warn);
+  color: #000;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.pick-bar .link {
+  color: #000;
+  font-weight: 600;
+  text-decoration: underline;
+}
+.pick-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.pick-info code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pick-ln {
+  background: #000;
+  color: var(--warn);
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-family: var(--mono);
+  font-size: 15px;
+  font-weight: 800;
+}
+.inline-note {
+  margin: 4px 8px 6px 40px;
+  background: var(--surface-2);
+  border-left: 3px solid var(--warn);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 13px;
+}
+.card-head .inline-note {
+  margin: 4px 0 0;
+}
+.inline-note-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.inline-note .note {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.round.comment.on {
+  outline: 3px solid var(--text);
 }
 
 .actions {

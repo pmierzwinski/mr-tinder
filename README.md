@@ -3,7 +3,8 @@
 Code review na telefonie: jedna karta = jeden plik z MR.
 
 - **w prawo** → plik obejrzany (następna karta)
-- **w lewo** → komentarz (stuknij linię w diffie, żeby był przypięty do linii)
+- **w lewo** → tryb wyboru linii: przeciągnij palcem po diffie (przy krawędzi przewija), puść na linii → komentarz.
+  Komentarze w drafcie widać pod linią, można je usunąć.
 - na końcu: **Wyślij review** (publikuje draft comments) albo **Approve**
 
 ## Start

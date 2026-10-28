@@ -8,6 +8,7 @@ type Props = {
   onSwipeLeft: () => void;
   rightLabel: string;
   leftLabel: string;
+  disabled?: boolean;
   children: ReactNode;
 };
 
@@ -15,7 +16,7 @@ type Drag = { id: number; x: number; y: number; axis: 'h' | 'v' | null };
 
 // Horizontal drag swipes the card; vertical movement is left to the browser (touch-action: pan-y)
 // so the diff inside stays scrollable.
-export function SwipeCard({ onSwipeRight, onSwipeLeft, rightLabel, leftLabel, children }: Props) {
+export function SwipeCard({ onSwipeRight, onSwipeLeft, rightLabel, leftLabel, disabled, children }: Props) {
   const [dx, setDx] = useState(0);
   const [animating, setAnimating] = useState(false);
   const drag = useRef<Drag | null>(null);
@@ -36,7 +37,7 @@ export function SwipeCard({ onSwipeRight, onSwipeLeft, rightLabel, leftLabel, ch
       }}
       onTransitionEnd={() => setAnimating(false)}
       onPointerDown={(e) => {
-        if (e.pointerType === 'mouse' && e.button !== 0) return;
+        if (disabled || (e.pointerType === 'mouse' && e.button !== 0)) return;
         drag.current = { id: e.pointerId, x: e.clientX, y: e.clientY, axis: null };
         moved.current = false;
       }}

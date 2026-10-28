@@ -25,10 +25,25 @@ export const loadSession = () => readJson<Session>(SESSION_KEY);
 export const saveSession = (s: Session) => writeJson(SESSION_KEY, s);
 export const clearSession = () => localStorage.removeItem(SESSION_KEY);
 
-// Kept separately from the session so the GitLab URL survives logging out.
-const URL_KEY = 'mr-tinder:gitlab-url';
-export const loadGitLabUrl = () => readJson<string>(URL_KEY) ?? '';
-export const saveGitLabUrl = (url: string) => writeJson(URL_KEY, url);
+// Kept separately from the session so URL and token survive logging out.
+export type Credentials = { baseUrl: string; token: string };
+const CREDENTIALS_KEY = 'mr-tinder:credentials';
+const LEGACY_URL_KEY = 'mr-tinder:gitlab-url';
+
+export function loadCredentials(): Credentials {
+  return (
+    readJson<Credentials>(CREDENTIALS_KEY) ??
+    loadSession() ?? { baseUrl: readJson<string>(LEGACY_URL_KEY) ?? '', token: '' }
+  );
+}
+export const saveCredentials = (c: Credentials) => writeJson(CREDENTIALS_KEY, c);
+
+/** Accepts "gitlab.example.com", "https://gitlab.example.com/" etc. */
+export function normalizeUrl(input: string) {
+  const url = input.trim().replace(/\/+$/, '');
+  if (!url) return '';
+  return /^https?:\/\//i.test(url) ? url : `https://${url}`;
+}
 
 // GitLab keeps its own "Viewed" checkbox in the browser only (no API), so we track it ourselves.
 // We store a hash of each file's diff: when a new push changes the file, it shows up again.
