@@ -48,15 +48,7 @@ export function Summary({ api, mrs, cards, drafts, setDrafts, onExit, onRestart 
 
   return (
     <div className="screen summary">
-      <div className="deck-top">
-        <button className="link" onClick={onExit}>
-          ← Lista
-        </button>
-        <button className="link" onClick={onRestart}>
-          Przejrzyj od nowa
-        </button>
-      </div>
-
+      <h2 className="summary-title">Podsumowanie</h2>
       {mrs.map((mr) => {
         const key = mrKey(mr);
         const files = cards.filter((c) => mrKey(c.mr) === key);
@@ -116,6 +108,15 @@ export function Summary({ api, mrs, cards, drafts, setDrafts, onExit, onRestart 
           Approve wszystkie ({mrs.length})
         </button>
       )}
+
+      <div className="bottom-bar">
+        <button className="secondary big" onClick={onRestart}>
+          ↺ Jeszcze raz
+        </button>
+        <button className="secondary big" onClick={onExit}>
+          ☰ Lista MR
+        </button>
+      </div>
     </div>
   );
 }

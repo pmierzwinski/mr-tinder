@@ -1,39 +1,31 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { GitLab, MergeRequest, Project } from '../gitlab';
+import { loadTaskGroups, type TaskGroup } from '../tasks';
 
 type Props = { api: GitLab; username: string; onOpen: (mrs: MergeRequest[]) => void };
 
-type Group = { key: string; mrs: MergeRequest[] };
+type Tab = 'review' | 'tasks' | 'repos';
 
-// MRs belonging to one feature across repos share a Jira key or, failing that, the branch name.
-const JIRA_KEY = /[A-Z][A-Z0-9]{1,9}-\d+/;
-
-function groupKey(mr: MergeRequest) {
-  return JIRA_KEY.exec(mr.source_branch)?.[0] ?? JIRA_KEY.exec(mr.title)?.[0] ?? mr.source_branch;
-}
-
-function groupMergeRequests(mrs: MergeRequest[]): Group[] {
-  const map = new Map<string, MergeRequest[]>();
-  for (const mr of mrs) {
-    const key = groupKey(mr);
-    map.set(key, [...(map.get(key) ?? []), mr]);
-  }
-  return [...map].map(([key, mrs]) => ({ key, mrs })).sort((a, b) => b.mrs.length - a.mrs.length);
-}
+const TABS: { id: Tab; label: string }[] = [
+  { id: 'review', label: 'Do review' },
+  { id: 'tasks', label: 'Taski' },
+  { id: 'repos', label: 'Repozytoria' },
+];
 
 export function Inbox({ api, username, onOpen }: Props) {
-  const [tab, setTab] = useState<'review' | 'repos'>('review');
+  const [tab, setTab] = useState<Tab>('review');
   return (
     <div className="screen">
       <div className="tabs">
-        <button className={tab === 'review' ? 'active' : ''} onClick={() => setTab('review')}>
-          Do review
-        </button>
-        <button className={tab === 'repos' ? 'active' : ''} onClick={() => setTab('repos')}>
-          Repozytoria
-        </button>
+        {TABS.map((t) => (
+          <button key={t.id} className={tab === t.id ? 'active' : ''} onClick={() => setTab(t.id)}>
+            {t.label}
+          </button>
+        ))}
       </div>
-      {tab === 'review' ? <ReviewList api={api} username={username} onOpen={onOpen} /> : <RepoBrowser api={api} onOpen={onOpen} />}
+      {tab === 'review' && <ReviewList api={api} username={username} onOpen={onOpen} />}
+      {tab === 'tasks' && <TaskList api={api} username={username} onOpen={onOpen} />}
+      {tab === 'repos' && <RepoBrowser api={api} onOpen={onOpen} />}
     </div>
   );
 }
@@ -46,36 +38,58 @@ function ReviewList({ api, username, onOpen }: Props) {
     api.reviewRequests(username).then(setMrs, (e) => setError(String(e.message ?? e)));
   }, [api, username]);
 
-  const groups = useMemo(() => (mrs ? groupMergeRequests(mrs) : []), [mrs]);
-
   if (error) return <div className="error">{error}</div>;
   if (!mrs) return <div className="loading">Ładuję…</div>;
   if (!mrs.length) return <div className="empty">Nikt nie czeka na Twoje review 🎉</div>;
 
   return (
     <div className="list">
-      {groups.map((g) =>
-        g.mrs.length > 1 ? (
-          <div key={g.key} className="group">
-            <div className="group-head">
-              <div>
-                <div className="group-title">{g.key}</div>
-                <div className="meta">
-                  {g.mrs.length} MR · {new Set(g.mrs.map((m) => m.project_id)).size} repo
-                </div>
+      {mrs.map((mr) => (
+        <MrRow key={mr.id} mr={mr} onClick={() => onOpen([mr])} />
+      ))}
+    </div>
+  );
+}
+
+function TaskList({ api, username, onOpen }: Props) {
+  const [groups, setGroups] = useState<TaskGroup[] | null>(null);
+  const [open, setOpen] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    loadTaskGroups(api, username).then(setGroups, (e) => setError(String(e.message ?? e)));
+  }, [api, username]);
+
+  if (error) return <div className="error">{error}</div>;
+  if (!groups) return <div className="loading">Szukam MR po ticketach…</div>;
+  if (!groups.length) {
+    return <div className="empty">Brak MR z ticketem Jiry (np. WOH-123) przypisanych do Ciebie ani czekających na Twoje review.</div>;
+  }
+
+  return (
+    <div className="list">
+      {groups.map((g) => (
+        <div key={g.key} className="group">
+          <div className="group-head" onClick={() => setOpen(open === g.key ? null : g.key)}>
+            <div>
+              <div className="group-title">{g.key}</div>
+              <div className="meta">
+                {g.mrs.length} MR · {new Set(g.mrs.map((m) => m.project_id)).size} repo · {open === g.key ? 'zwiń ▴' : 'pokaż ▾'}
               </div>
-              <button className="primary small" onClick={() => onOpen(g.mrs)}>
-                Review całości
-              </button>
             </div>
-            {g.mrs.map((mr) => (
-              <MrRow key={mr.id} mr={mr} onClick={() => onOpen([mr])} />
-            ))}
+            <button
+              className="primary small"
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpen(g.mrs);
+              }}
+            >
+              Review całości
+            </button>
           </div>
-        ) : (
-          <MrRow key={g.mrs[0].id} mr={g.mrs[0]} onClick={() => onOpen(g.mrs)} />
-        ),
-      )}
+          {open === g.key && g.mrs.map((mr) => <MrRow key={mr.id} mr={mr} onClick={() => onOpen([mr])} />)}
+        </div>
+      ))}
     </div>
   );
 }

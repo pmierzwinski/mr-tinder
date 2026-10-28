@@ -106,6 +106,20 @@ export class GitLab {
     return this.getAll<MergeRequest>('/merge_requests', { scope: 'all', state: 'opened', reviewer_username: username });
   }
 
+  assignedMergeRequests(username: string) {
+    return this.getAll<MergeRequest>('/merge_requests', { scope: 'all', state: 'opened', assignee_username: username });
+  }
+
+  /** Searches open MRs in all visible projects by title/description. */
+  searchMergeRequests(search: string) {
+    return this.getAll<MergeRequest>('/merge_requests', { scope: 'all', state: 'opened', search }, 3);
+  }
+
+  async memberProjectIds() {
+    const projects = await this.getAll<Project>('/projects', { membership: true, simple: true });
+    return new Set(projects.map((p) => p.id));
+  }
+
   mergeRequestsByBranch(sourceBranch: string) {
     return this.getAll<MergeRequest>('/merge_requests', { scope: 'all', state: 'opened', source_branch: sourceBranch });
   }
