@@ -1,21 +1,6 @@
-import Anthropic from '@anthropic-ai/sdk';
-import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod';
-import { z } from 'zod';
 import type { FileDiff, MergeRequest } from './gitlab';
 
-const QuizSchema = z.object({
-  questions: z.array(
-    z.object({
-      question: z.string(),
-      options: z.array(z.string()),
-      correct_index: z.number().int(),
-      explanation: z.string(),
-    }),
-  ),
-});
-
-export type Quiz = z.infer<typeof QuizSchema>;
-export type QuizQuestion = Quiz['questions'][number];
+export type QuizQuestion = { question: string; options: string[]; correct_index: number; explanation: string };
 
 const SYSTEM = `Jesteś doświadczonym reviewerem kodu. Dostajesz merge requesty (opis i diffy plików), które użytkownik właśnie przejrzał na telefonie.
 Ułóż quiz z dokładnie 5 pytań jednokrotnego wyboru, który sprawdzi, czy użytkownik naprawdę przeczytał i zrozumiał te zmiany.
@@ -40,44 +25,11 @@ function describeChanges(changes: { mr: MergeRequest; files: FileDiff[] }[]) {
     .join('\n\n');
 }
 
-export type AiProvider = 'anthropic' | 'gemini';
-
-/** Google AI Studio keys start with "AIza"; everything else is treated as an Anthropic key. */
-export const providerForKey = (key: string): AiProvider => (key.startsWith('AIza') ? 'gemini' : 'anthropic');
-
 type Changes = { mr: MergeRequest; files: FileDiff[] }[];
-
-function usableQuestions(questions: QuizQuestion[] | undefined) {
-  const valid = questions?.filter((q) => q.options.length >= 2 && q.correct_index >= 0 && q.correct_index < q.options.length);
-  if (!valid?.length) throw new Error('Nie udało się odczytać quizu z odpowiedzi modelu.');
-  return valid;
-}
-
-export function generateQuiz(apiKey: string, changes: Changes): Promise<QuizQuestion[]> {
-  // The key is the user's own and never leaves their browser except to the chosen AI provider.
-  return providerForKey(apiKey) === 'gemini' ? generateWithGemini(apiKey, changes) : generateWithClaude(apiKey, changes);
-}
-
-async function generateWithClaude(apiKey: string, changes: Changes) {
-  const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
-  const response = await client.beta.messages.parse({
-    model: 'claude-opus-5-5',
-    max_tokens: 16000,
-    betas: ['server-side-fallback-2026-07-01'],
-    fallbacks: 'default',
-    output_config: { effort: 'medium', format: betaZodOutputFormat(QuizSchema) },
-    system: SYSTEM,
-    messages: [{ role: 'user', content: describeChanges(changes) }],
-  });
-
-  if (response.stop_reason === 'refusal') throw new Error('Model odmówił ułożenia quizu dla tych zmian.');
-  if (response.stop_reason === 'max_tokens') throw new Error('Odpowiedź modelu została ucięta, spróbuj ponownie.');
-  return usableQuestions(response.parsed_output?.questions);
-}
 
 const GEMINI_MODEL = 'gemini-3.8-flash';
 
-// Gemini's responseSchema uses its own OpenAPI-style subset, so it's written out instead of derived from zod.
+// Gemini's responseSchema format (an OpenAPI subset); the answer is still validated below.
 const GEMINI_SCHEMA = {
   type: 'OBJECT',
   properties: {
@@ -104,7 +56,8 @@ type GeminiResponse = {
   error?: { message?: string };
 };
 
-async function generateWithGemini(apiKey: string, changes: Changes) {
+/** Generates the quiz with Gemini; the key is the user's own and is sent only to Google's API. */
+export async function generateQuiz(apiKey: string, changes: Changes): Promise<QuizQuestion[]> {
   const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
@@ -127,5 +80,22 @@ async function generateWithGemini(apiKey: string, changes: Changes) {
   } catch {
     throw new Error('Gemini zwrócił odpowiedź, która nie jest poprawnym JSON-em.');
   }
-  return usableQuestions(QuizSchema.safeParse(json).data?.questions);
+  const questions = (json as { questions?: unknown } | null)?.questions;
+  const valid = (Array.isArray(questions) ? questions : []).filter(isQuestion);
+  if (!valid.length) throw new Error('Nie udało się odczytać quizu z odpowiedzi modelu.');
+  return valid;
+}
+
+function isQuestion(q: unknown): q is QuizQuestion {
+  const c = q as Partial<QuizQuestion> | null;
+  return (
+    typeof c?.question === 'string' &&
+    typeof c.explanation === 'string' &&
+    Array.isArray(c.options) &&
+    c.options.length >= 2 &&
+    c.options.every((o) => typeof o === 'string') &&
+    Number.isInteger(c.correct_index) &&
+    c.correct_index! >= 0 &&
+    c.correct_index! < c.options.length
+  );
 }

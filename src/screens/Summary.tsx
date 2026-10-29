@@ -80,7 +80,7 @@ export function Summary({ api, mrs, cards, drafts, setDrafts, exitLabel, onExit,
           🧠 Sprawdź się — quiz z tych zmian (5 pytań)
         </button>
       ) : (
-        <div className="meta">Dodaj klucz API (Gemini albo Anthropic) w ustawieniach (⚙︎ na liście MR), żeby po review wygenerować quiz ze zmian.</div>
+        <div className="meta">Dodaj klucz API Gemini w ustawieniach (⚙︎ na liście MR), żeby po review wygenerować quiz ze zmian.</div>
       )}
       {mrs.map((mr) => {
         const key = mrKey(mr);
