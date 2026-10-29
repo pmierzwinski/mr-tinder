@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CommentSheet } from '../components/CommentSheet';
 import { DiffView, InlineNote } from '../components/DiffView';
 import { SwipeCard } from '../components/SwipeCard';
-import { expandEnd, expandHunk, parseDiff, trailingGap, type DiffLine, type ExpandMode } from '../diff';
+import { diffStats, expandEnd, expandHunk, parseDiff, trailingGap, type DiffLine, type ExpandMode } from '../diff';
 import { ApiError, type DraftNote, type FileDiff, type GitLab, type MergeRequest, type Position } from '../gitlab';
 import { hashDiff, isViewed, loadSmallCode, saveSmallCode, setViewed } from '../storage';
 import { Summary } from './Summary';
@@ -147,6 +147,8 @@ export function Deck({ api, mrs, exitLabel, onExit }: Props) {
 
   const commentLine = commentAt == null ? null : card.lines[commentAt];
   const { file, mr } = card;
+  // Expanded context only adds unchanged lines, so these counts stay those of the diff.
+  const { added, removed } = diffStats(card.lines);
 
   const addComment = async (text: string) => {
     let note: DraftNote;
@@ -254,8 +256,11 @@ export function Deck({ api, mrs, exitLabel, onExit }: Props) {
           className={picking ? 'picking' : ''}
         >
           <div className="card-head">
-            <div className="path">
-              {file.renamed_file ? `${file.old_path} → ${file.new_path}` : file.new_path}
+            <div className="path-row">
+              <span className="path">{file.renamed_file ? `${file.old_path} → ${file.new_path}` : file.new_path}</span>
+              <span className="line-stats">
+                (<span className="minus">−{removed}</span> <span className="plus">+{added}</span>)
+              </span>
             </div>
             {(file.new_file || file.deleted_file || fileDrafts.length > 0) && (
               <div className="meta">

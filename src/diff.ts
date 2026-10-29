@@ -33,6 +33,16 @@ export function parseDiff(diff: string): DiffLine[] {
   return out;
 }
 
+export function diffStats(lines: DiffLine[]) {
+  let added = 0;
+  let removed = 0;
+  for (const l of lines) {
+    if (l.type === 'add') added++;
+    else if (l.type === 'del') removed++;
+  }
+  return { added, removed };
+}
+
 export function isCommentable(l: DiffLine) {
   return l.type === 'add' || l.type === 'del' || l.type === 'ctx';
 }
