@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState } from 'react';
-import type { Approvals, GitLab, MergeRequest, Project, Reviewer } from '../gitlab';
+import type { Approvals, GitLab, MergeRequest, Project, Reviewer, User } from '../gitlab';
 import { loadTaskGroups, type TaskGroup } from '../tasks';
 
 type Props = { api: GitLab; username: string; onOpen: (mrs: MergeRequest[]) => void };
@@ -170,8 +170,10 @@ function RepoBrowser({ api, onOpen }: Omit<Props, 'username'>) {
 }
 
 function MrRow({ mr, onClick, children }: { mr: MergeRequest; onClick: () => void; children?: React.ReactNode }) {
+  const status = useMrStatus(mr);
+  const approvedByMe = !!status?.approvedBy.some((u) => u.username === status.me);
   return (
-    <div className="row-item" onClick={onClick}>
+    <div className={`row-item${approvedByMe ? ' approved' : ''}`} onClick={onClick}>
       <div className="meta">
         {mr.references.full}
         {mr.draft && <span className="badge">draft</span>}
@@ -180,13 +182,15 @@ function MrRow({ mr, onClick, children }: { mr: MergeRequest; onClick: () => voi
       <div className="meta">
         {mr.author.name} · <code>{mr.source_branch}</code> → <code>{mr.target_branch}</code>
       </div>
-      <MrStatus mr={mr} />
+      {status && <MrStatus status={status} approvedByMe={approvedByMe} />}
       {children}
     </div>
   );
 }
 
-function MrStatus({ mr }: { mr: MergeRequest }) {
+type MrStatusData = { me: string; approvedBy: User[]; required: number; changes: User[] };
+
+function useMrStatus(mr: MergeRequest): MrStatusData | null {
   const ctx = useContext(StatusContext)!;
   const [approvals, setApprovals] = useState<Approvals | null>(null);
   const [reviewers, setReviewers] = useState<Reviewer[]>([]);
@@ -202,26 +206,34 @@ function MrStatus({ mr }: { mr: MergeRequest }) {
   }, [ctx.api, mr]);
 
   if (!approvals) return null;
-  const approvedBy = approvals.approved_by.map((a) => a.user);
-  const me = ctx.username;
-  const changes = reviewers.filter((r) => r.state === 'requested_changes').map((r) => r.user);
-  const required = approvals.approvals_required ?? 0;
+  return {
+    me: ctx.username,
+    approvedBy: approvals.approved_by.map((a) => a.user),
+    required: approvals.approvals_required ?? 0,
+    changes: reviewers.filter((r) => r.state === 'requested_changes').map((r) => r.user),
+  };
+}
+
+const firstNames = (users: User[]) => users.map((u) => u.name.split(' ')[0]).join(', ');
+
+// My own approval is shown as the row's green frame; badges cover everyone else.
+function MrStatus({ status, approvedByMe }: { status: MrStatusData; approvedByMe: boolean }) {
+  const { me, approvedBy, required, changes } = status;
+  const others = approvedBy.filter((u) => u.username !== me);
   const count = required ? `${approvedBy.length}/${required}` : String(approvedBy.length);
 
   return (
     <div className="mr-status">
-      {approvedBy.some((u) => u.username === me) ? (
-        <span className="status ok">✓ Zatwierdzone przez Ciebie{approvedBy.length > 1 ? ` (+${approvedBy.length - 1})` : ''}</span>
-      ) : approvedBy.length ? (
-        <span className="status ok" title={approvedBy.map((u) => u.name).join(', ')}>
-          ✓ {count} approve: {approvedBy.map((u) => u.name.split(' ')[0]).join(', ')}
+      {others.length > 0 ? (
+        <span className="status ok" title={others.map((u) => u.name).join(', ')}>
+          ✓ {count} approve: {firstNames(others)}
         </span>
       ) : (
-        <span className="status muted">Brak approve{required ? ` (0/${required})` : ''}</span>
+        !approvedByMe && <span className="status muted">Brak approve{required ? ` (0/${required})` : ''}</span>
       )}
       {changes.length > 0 && (
         <span className="status bad">
-          ✗ {changes.some((u) => u.username === me) ? 'Prosisz o zmiany' : `Zmiany: ${changes.map((u) => u.name.split(' ')[0]).join(', ')}`}
+          ✗ {changes.some((u) => u.username === me) ? 'Prosisz o zmiany' : `Zmiany: ${firstNames(changes)}`}
         </span>
       )}
     </div>

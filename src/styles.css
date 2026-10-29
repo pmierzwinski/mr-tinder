@@ -234,12 +234,17 @@ code {
 }
 .row-item {
   background: var(--surface);
+  border: 2px solid transparent;
   border-radius: 12px;
   padding: 12px;
   cursor: pointer;
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+.row-item.approved {
+  border-color: var(--ok);
+  box-shadow: 0 0 14px rgba(34, 211, 160, 0.18);
 }
 .row-item .title {
   font-weight: 600;
