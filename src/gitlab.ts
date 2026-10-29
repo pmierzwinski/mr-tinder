@@ -175,6 +175,10 @@ export class GitLab {
     return this.post<DraftNote>(`${this.mrPath(mr)}/draft_notes`, { note, position });
   }
 
+  updateDraftNote(mr: MergeRequest, id: number, note: string) {
+    return this.request<DraftNote>('PUT', `${this.mrPath(mr)}/draft_notes/${id}`, { body: { note } }).then((r) => r.data);
+  }
+
   deleteDraftNote(mr: MergeRequest, id: number) {
     return this.request<void>('DELETE', `${this.mrPath(mr)}/draft_notes/${id}`);
   }

@@ -592,6 +592,27 @@ code {
   white-space: pre-wrap;
   font-size: 14px;
 }
+.drafts .note.editable {
+  cursor: pointer;
+  border-radius: 6px;
+  margin: 2px -4px;
+  padding: 2px 4px;
+}
+.drafts .note.editable:active {
+  background: var(--surface);
+}
+.edit-hint {
+  color: var(--warn);
+}
+.draft-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+.draft-edit .row {
+  justify-content: flex-end;
+}
 .done {
   color: var(--ok);
   font-weight: 700;

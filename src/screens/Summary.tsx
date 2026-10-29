@@ -46,6 +46,15 @@ export function Summary({ api, mrs, cards, drafts, setDrafts, onExit, onRestart 
     }
   };
 
+  const saveDraft = async (mr: MergeRequest, note: DraftNote, text: string) => {
+    const updated = await api.updateDraftNote(mr, note.id, text);
+    setDrafts((d) => ({
+      ...d,
+      // Keep our copy of the position: the fallback file-level notes only have it locally.
+      [mrKey(mr)]: d[mrKey(mr)].map((n) => (n.id === note.id ? { ...n, note: updated?.note ?? text } : n)),
+    }));
+  };
+
   return (
     <div className="screen summary">
       <h2 className="summary-title">Podsumowanie</h2>
@@ -67,16 +76,12 @@ export function Summary({ api, mrs, cards, drafts, setDrafts, onExit, onRestart 
             {notes.length > 0 && (
               <ul className="drafts">
                 {notes.map((n) => (
-                  <li key={n.id}>
-                    <div className="meta">
-                      {n.position?.new_path ?? 'ogólny'}
-                      {n.position?.new_line ? `:${n.position.new_line}` : n.position?.old_line ? `:-${n.position.old_line}` : ''}
-                    </div>
-                    <div className="note">{n.note}</div>
-                    <button className="link small" onClick={() => removeDraft(mr, n)}>
-                      usuń
-                    </button>
-                  </li>
+                  <DraftItem
+                    key={n.id}
+                    note={n}
+                    onSave={(text) => saveDraft(mr, n, text)}
+                    onDelete={() => removeDraft(mr, n)}
+                  />
                 ))}
               </ul>
             )}
@@ -118,5 +123,59 @@ export function Summary({ api, mrs, cards, drafts, setDrafts, onExit, onRestart 
         </button>
       </div>
     </div>
+  );
+}
+
+type DraftItemProps = { note: DraftNote; onSave: (text: string) => Promise<void>; onDelete: () => void };
+
+function DraftItem({ note, onSave, onDelete }: DraftItemProps) {
+  const [text, setText] = useState<string | null>(null); // null = not editing
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const p = note.position;
+
+  const save = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await onSave(text!.trim());
+      setText(null);
+    } catch (e) {
+      setError(String(e instanceof Error ? e.message : e));
+    }
+    setBusy(false);
+  };
+
+  return (
+    <li>
+      <div className="meta">
+        {p?.new_path ?? 'ogólny'}
+        {p?.new_line ? `:${p.new_line}` : p?.old_line ? `:-${p.old_line}` : ''}
+      </div>
+      {text === null ? (
+        <>
+          <div className="note editable" onClick={() => setText(note.note)}>
+            {note.note}
+            <span className="edit-hint"> ✎</span>
+          </div>
+          <button className="link small" onClick={onDelete}>
+            usuń
+          </button>
+        </>
+      ) : (
+        <div className="draft-edit">
+          <textarea autoFocus rows={4} value={text} onChange={(e) => setText(e.target.value)} />
+          {error && <div className="error">{error}</div>}
+          <div className="row">
+            <button className="secondary small" onClick={() => setText(null)} disabled={busy}>
+              Anuluj
+            </button>
+            <button className="primary small" onClick={save} disabled={busy || !text.trim()}>
+              {busy ? 'Zapisuję…' : 'Zapisz'}
+            </button>
+          </div>
+        </div>
+      )}
+    </li>
   );
 }
