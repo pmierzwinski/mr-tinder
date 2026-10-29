@@ -151,6 +151,7 @@ function HunkHeader({ line, gap, onExpand }: { line: DiffLine; gap: { from: numb
   const hidden = gap.to - gap.from + 1;
   // "@@ -10,9 +10,12 @@ public class Foo" -> "public class Foo"
   const section = line.text.replace(/^@@[^@]*@@\s?/, '');
+  if (hidden <= 0 && !section) return null;
   return (
     <div className="expander">
       {hidden > 0 &&

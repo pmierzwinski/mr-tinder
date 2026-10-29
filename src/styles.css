@@ -420,6 +420,51 @@ code {
   flex-direction: column;
   gap: 4px;
 }
+.mr-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: -8px -10px 4px;
+  padding: 6px 10px;
+  background: rgba(255, 77, 109, 0.08);
+  border-bottom: 1px solid var(--border);
+  text-decoration: none;
+  color: var(--text);
+  min-width: 0;
+}
+.mr-info-ref {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 12px;
+  min-width: 0;
+}
+.mr-info-ref .badge {
+  margin-right: 6px;
+}
+.mr-info-group {
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.mr-info-repo {
+  font-weight: 700;
+  white-space: nowrap;
+}
+.mr-info-iid {
+  color: var(--link);
+  font-weight: 700;
+  white-space: nowrap;
+}
+.mr-info-title {
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .path {
   font-family: var(--mono);
   font-size: 13px;

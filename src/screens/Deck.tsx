@@ -253,7 +253,7 @@ export function Deck({ api, mrs, onExit }: Props) {
           className={picking ? 'picking' : ''}
         >
           <div className="card-head">
-            {mergeRequests.length > 1 && <div className="meta">{mr.references.full}</div>}
+            <MrInfo mr={mr} position={mergeRequests.findIndex((m) => m.id === mr.id) + 1} total={mergeRequests.length} />
             <div className="path">
               {file.renamed_file ? `${file.old_path} → ${file.new_path}` : file.new_path}
             </div>
@@ -322,5 +322,27 @@ export function Deck({ api, mrs, onExit }: Props) {
         <CommentSheet path={file.new_path} line={commentLine} onCancel={cancelComment} onSubmit={addComment} />
       )}
     </div>
+  );
+}
+
+/** Which repo and MR the current file belongs to; tapping opens the MR in GitLab. */
+function MrInfo({ mr, position, total }: { mr: MergeRequest; position: number; total: number }) {
+  // "group/sub/repo!12" -> repo path and MR number
+  const [path, iid] = mr.references.full.split('!');
+  const slash = path.lastIndexOf('/');
+  return (
+    <a className="mr-info" href={mr.web_url} target="_blank" rel="noreferrer">
+      <div className="mr-info-ref">
+        {total > 1 && (
+          <span className="badge">
+            MR {position}/{total}
+          </span>
+        )}
+        <span className="mr-info-group">{path.slice(0, slash + 1)}</span>
+        <span className="mr-info-repo">{path.slice(slash + 1)}</span>
+        <span className="mr-info-iid">!{iid}</span>
+      </div>
+      <div className="mr-info-title">{mr.title}</div>
+    </a>
   );
 }
