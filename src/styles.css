@@ -172,12 +172,6 @@ code {
 .badge.del {
   color: var(--danger);
 }
-.plus {
-  color: var(--ok);
-}
-.minus {
-  color: var(--danger);
-}
 
 /* login */
 .login {
@@ -358,18 +352,6 @@ code {
   align-items: center;
   gap: 10px;
 }
-.progress {
-  flex: 1;
-  height: 4px;
-  background: var(--surface-2);
-  border-radius: 2px;
-  overflow: hidden;
-}
-.progress-bar {
-  height: 100%;
-  background: var(--gradient);
-  transition: width 0.2s;
-}
 .stack {
   position: relative;
   flex: 1;
@@ -420,46 +402,78 @@ code {
   flex-direction: column;
   gap: 4px;
 }
-.mr-info {
+.mr-progress {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  border-radius: 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  padding: 4px 8px;
+  text-decoration: none;
+  color: var(--text);
   display: flex;
   flex-direction: column;
   gap: 1px;
-  margin: -8px -10px 4px;
-  padding: 6px 10px;
-  background: rgba(255, 77, 109, 0.08);
-  border-bottom: 1px solid var(--border);
-  text-decoration: none;
-  color: var(--text);
+}
+.mr-progress-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: linear-gradient(135deg, rgba(255, 77, 109, 0.38), rgba(255, 142, 83, 0.38));
+  border-right: 2px solid var(--accent-2);
+  transition: width 0.25s ease-out;
+}
+.mr-progress-line,
+.mr-progress-title {
+  position: relative;
+  font-size: 11px;
   min-width: 0;
 }
-.mr-info-ref {
+.mr-progress-line {
   display: flex;
   align-items: center;
   gap: 2px;
-  font-size: 12px;
-  min-width: 0;
 }
-.mr-info-ref .badge {
-  margin-right: 6px;
+.mr-progress-line .badge {
+  font-size: 10px;
+  padding: 0 4px;
+  margin-right: 4px;
 }
-.mr-info-group {
+.mr-progress-group {
   color: var(--muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
+  flex-shrink: 1;
 }
-.mr-info-repo {
+.mr-progress-repo,
+.mr-progress-iid,
+.mr-progress-target {
   font-weight: 700;
   white-space: nowrap;
 }
-.mr-info-iid {
+.mr-progress-iid {
   color: var(--link);
+}
+.mr-progress-target {
+  color: var(--muted);
+  font-weight: 500;
+  margin-left: 4px;
+  font-family: var(--mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 2;
+  min-width: 0;
+}
+.mr-progress-count {
+  margin-left: auto;
+  padding-left: 6px;
   font-weight: 700;
   white-space: nowrap;
 }
-.mr-info-title {
-  font-size: 13px;
+.mr-progress-title {
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;

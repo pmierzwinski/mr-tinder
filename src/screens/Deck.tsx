@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CommentSheet } from '../components/CommentSheet';
 import { DiffView, InlineNote } from '../components/DiffView';
 import { SwipeCard } from '../components/SwipeCard';
-import { diffStats, expandEnd, expandHunk, parseDiff, trailingGap, type DiffLine, type ExpandMode } from '../diff';
+import { expandEnd, expandHunk, parseDiff, trailingGap, type DiffLine, type ExpandMode } from '../diff';
 import { ApiError, type DraftNote, type FileDiff, type GitLab, type MergeRequest, type Position } from '../gitlab';
 import { hashDiff, isViewed, loadSmallCode, saveSmallCode, setViewed } from '../storage';
 import { Summary } from './Summary';
@@ -146,7 +146,6 @@ export function Deck({ api, mrs, exitLabel, onExit }: Props) {
   }
 
   const commentLine = commentAt == null ? null : card.lines[commentAt];
-  const { added, removed } = diffStats(card.lines);
   const { file, mr } = card;
 
   const addComment = async (text: string) => {
@@ -221,12 +220,13 @@ export function Deck({ api, mrs, exitLabel, onExit }: Props) {
         <button className="link" onClick={onExit}>
           ✕
         </button>
-        <div className="progress">
-          <div className="progress-bar" style={{ width: `${(index / cards.length) * 100}%` }} />
-        </div>
-        <span className="meta">
-          {index + 1}/{cards.length}
-        </span>
+        <MrProgress
+          mr={mr}
+          position={mergeRequests.findIndex((m) => m.id === mr.id) + 1}
+          total={mergeRequests.length}
+          done={index}
+          count={cards.length}
+        />
         <button
           className={`font-toggle${smallCode ? ' on' : ''}`}
           onClick={() => {
@@ -254,16 +254,16 @@ export function Deck({ api, mrs, exitLabel, onExit }: Props) {
           className={picking ? 'picking' : ''}
         >
           <div className="card-head">
-            <MrInfo mr={mr} position={mergeRequests.findIndex((m) => m.id === mr.id) + 1} total={mergeRequests.length} />
             <div className="path">
               {file.renamed_file ? `${file.old_path} → ${file.new_path}` : file.new_path}
             </div>
-            <div className="meta">
-              {file.new_file && <span className="badge add">nowy</span>}
-              {file.deleted_file && <span className="badge del">usunięty</span>}
-              <span className="plus">+{added}</span> <span className="minus">−{removed}</span>
-              {fileDrafts.length > 0 && <span className="badge">💬 {fileDrafts.length}</span>}
-            </div>
+            {(file.new_file || file.deleted_file || fileDrafts.length > 0) && (
+              <div className="meta">
+                {file.new_file && <span className="badge add">nowy</span>}
+                {file.deleted_file && <span className="badge del">usunięty</span>}
+                {fileDrafts.length > 0 && <span className="badge">💬 {fileDrafts.length}</span>}
+              </div>
+            )}
             {fileNotes.map((n) => (
               <InlineNote key={n.id} note={n} onDelete={() => deleteNote(n)} />
             ))}
@@ -326,24 +326,32 @@ export function Deck({ api, mrs, exitLabel, onExit }: Props) {
   );
 }
 
-/** Which repo and MR the current file belongs to; tapping opens the MR in GitLab. */
-function MrInfo({ mr, position, total }: { mr: MergeRequest; position: number; total: number }) {
+/**
+ * Progress bar that doubles as the MR header: repo, MR number, target branch and title, filling up
+ * as files are reviewed. Tapping it opens the MR in GitLab.
+ */
+function MrProgress({ mr, position, total, done, count }: { mr: MergeRequest; position: number; total: number; done: number; count: number }) {
   // "group/sub/repo!12" -> repo path and MR number
   const [path, iid] = mr.references.full.split('!');
   const slash = path.lastIndexOf('/');
   return (
-    <a className="mr-info" href={mr.web_url} target="_blank" rel="noreferrer">
-      <div className="mr-info-ref">
+    <a className="mr-progress" href={mr.web_url} target="_blank" rel="noreferrer">
+      <div className="mr-progress-fill" style={{ width: `${(done / count) * 100}%` }} />
+      <div className="mr-progress-line">
         {total > 1 && (
           <span className="badge">
             MR {position}/{total}
           </span>
         )}
-        <span className="mr-info-group">{path.slice(0, slash + 1)}</span>
-        <span className="mr-info-repo">{path.slice(slash + 1)}</span>
-        <span className="mr-info-iid">!{iid}</span>
+        <span className="mr-progress-group">{path.slice(0, slash + 1)}</span>
+        <span className="mr-progress-repo">{path.slice(slash + 1)}</span>
+        <span className="mr-progress-iid">!{iid}</span>
+        <span className="mr-progress-target">→ {mr.target_branch}</span>
+        <span className="mr-progress-count">
+          {done + 1}/{count}
+        </span>
       </div>
-      <div className="mr-info-title">{mr.title}</div>
+      <div className="mr-progress-title">{mr.title}</div>
     </a>
   );
 }
