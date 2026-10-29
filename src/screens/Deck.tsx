@@ -223,6 +223,7 @@ export function Deck({ api, mrs, onExit }: Props) {
             </div>
           ) : (
             <DiffView
+              path={file.new_path}
               lines={card.lines}
               notesFor={(l) => fileDrafts.filter((d) => isOnLine(d, l))}
               onDeleteNote={deleteNote}

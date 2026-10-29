@@ -350,7 +350,7 @@ code {
 }
 .diff-line .code {
   white-space: pre-wrap;
-  word-break: break-all;
+  overflow-wrap: anywhere;
   padding-right: 8px;
 }
 .diff-line.add {

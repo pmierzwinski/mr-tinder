@@ -1,8 +1,10 @@
-import { Fragment, useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { isCommentable, type DiffLine } from '../diff';
 import type { DraftNote } from '../gitlab';
+import { highlightDiff, languageFor } from '../highlight';
 
 type Props = {
+  path: string;
   lines: DiffLine[];
   notesFor: (line: DiffLine) => DraftNote[];
   onDeleteNote: (note: DraftNote) => void;
@@ -17,12 +19,13 @@ type Props = {
 
 const EDGE = 56; // px from the top/bottom edge where dragging auto-scrolls
 
-export function DiffView({ lines, notesFor, onDeleteNote, picking, onPick, onPickFile, onCancelPick, highlight }: Props) {
+export function DiffView({ path, lines, notesFor, onDeleteNote, picking, onPick, onPickFile, onCancelPick, highlight }: Props) {
   const scroller = useRef<HTMLDivElement>(null);
   const pointer = useRef<{ x: number; y: number } | null>(null);
   const hoverRef = useRef<number | null>(null);
   const frame = useRef(0);
   const [hover, setHover] = useState<number | null>(null);
+  const highlighted = useMemo(() => highlightDiff(lines, languageFor(path)), [lines, path]);
 
   useEffect(() => {
     if (!picking) {
@@ -123,7 +126,12 @@ export function DiffView({ lines, notesFor, onDeleteNote, picking, onPick, onPic
             >
               <span className="ln">{l.oldLine ?? ''}</span>
               <span className="ln">{l.newLine ?? ''}</span>
-              <span className="code">{l.text || ' '}</span>
+              {highlighted[i] ? (
+                // highlight.js escapes the source text, so this HTML only adds its own spans
+                <span className="code" dangerouslySetInnerHTML={{ __html: highlighted[i] }} />
+              ) : (
+                <span className="code">{l.text || ' '}</span>
+              )}
             </div>
             {notesFor(l).map((n) => (
               <InlineNote key={n.id} note={n} onDelete={() => onDeleteNote(n)} />
