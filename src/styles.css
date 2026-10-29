@@ -320,10 +320,8 @@ code {
   color: var(--warn);
   border-color: var(--warn);
 }
-.small-code .diff,
-.small-code .expander,
-.small-code .expander button {
-  font-size: 10px;
+.small-code .diff {
+  font-size: 8.5px;
 }
 .deck-top {
   display: flex;
@@ -405,41 +403,35 @@ code {
   /* touch-action only counts up to the nearest scroll container, so the card's pan-y must be repeated here */
   touch-action: pan-y;
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: 10px;
   line-height: 1.5;
   -webkit-overflow-scrolling: touch;
 }
 .diff-line {
-  display: grid;
-  grid-template-columns: var(--ln-width, 3ch) var(--ln-width, 3ch) 1fr;
-  column-gap: 4px;
-  padding-left: 2px;
-}
-.diff-line .ln {
-  color: var(--muted);
-  text-align: right;
-  opacity: 0.6;
+  /* no line numbers: the colored left edge marks added/removed lines */
+  padding-left: 6px;
 }
 .diff-line .code {
+  display: block;
   white-space: pre-wrap;
   tab-size: 2;
-  padding-left: 2px;
+  /* wrapped continuation lines hang 2ch to the right, so they don't read as new lines */
+  padding-left: 2ch;
+  text-indent: -2ch;
   overflow-wrap: anywhere;
   padding-right: 8px;
 }
 .diff-line.add {
   background: var(--add-bg);
+  box-shadow: inset 3px 0 var(--ok);
 }
 .diff-line.del {
   background: var(--del-bg);
+  box-shadow: inset 3px 0 var(--danger);
 }
 .diff-line.hunk {
   color: var(--warn);
   background: var(--surface-2);
-}
-.diff-line.hunk .code,
-.diff-line.meta .code {
-  grid-column: 1 / -1;
 }
 .diff-line.meta {
   color: var(--muted);
@@ -460,12 +452,6 @@ code {
 .diff-line.active {
   outline: 2px solid var(--warn);
   outline-offset: -2px;
-}
-.diff-line.active .ln {
-  background: var(--warn);
-  color: #000;
-  opacity: 1;
-  font-weight: 700;
 }
 .pick-bar {
   background: var(--warn);
@@ -587,7 +573,12 @@ code {
   font-family: var(--mono);
   font-size: 12px;
   border-radius: 6px;
-  grid-template-columns: 34px 1fr;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 8px;
+}
+.sheet-line .ln {
+  color: var(--muted);
 }
 .chips {
   display: flex;
@@ -728,7 +719,7 @@ button.big {
   background: var(--surface-2);
   color: var(--muted);
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: 11px;
 }
 .expander button {
   background: rgba(180, 156, 255, 0.14);
@@ -736,7 +727,7 @@ button.big {
   border-radius: 6px;
   padding: 6px 10px;
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: 11px;
   white-space: nowrap;
 }
 .hunk-section {

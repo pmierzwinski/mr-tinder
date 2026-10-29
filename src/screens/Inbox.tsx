@@ -208,9 +208,9 @@ function useMrStatus(mr: MergeRequest): MrStatusData | null {
   if (!approvals) return null;
   return {
     me: ctx.username,
-    approvedBy: approvals.approved_by.map((a) => a.user),
+    approvedBy: (approvals.approved_by ?? []).map((a) => a.user),
     required: approvals.approvals_required ?? 0,
-    changes: reviewers.filter((r) => r.state === 'requested_changes').map((r) => r.user),
+    changes: (Array.isArray(reviewers) ? reviewers : []).filter((r) => r.state === 'requested_changes').map((r) => r.user),
   };
 }
 

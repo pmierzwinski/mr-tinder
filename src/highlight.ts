@@ -81,6 +81,11 @@ function markRanges(html: string, ranges: Range[]): string {
   return open ? out + '</span>' : out;
 }
 
+/** Halves leading spaces (4-space indents become 2) so more code fits on a phone screen. */
+function halveIndent(text: string) {
+  return text.replace(/^[ \t]+/, (indent) => indent.replace(/ +/g, (spaces) => ' '.repeat(Math.ceil(spaces.length / 2))));
+}
+
 /**
  * HTML for every code line (null for hunk headers etc.): syntax colors plus marks on the words
  * that changed within modified lines.
@@ -88,7 +93,9 @@ function markRanges(html: string, ranges: Range[]): string {
  * Each hunk is highlighted twice - once as the old file (context + removed lines) and once as
  * the new file (context + added lines) - so multi-line strings and comments color correctly.
  */
-export function renderDiff(lines: DiffLine[], language: string | null): (string | null)[] {
+export function renderDiff(diffLines: DiffLine[], language: string | null): (string | null)[] {
+  // Only the displayed copy is re-indented; comments and suggestions use the original text.
+  const lines = diffLines.map((l) => ({ ...l, text: halveIndent(l.text) }));
   const out: (string | null)[] = lines.map((l) => (l.type === 'hunk' || l.type === 'meta' ? null : escapeHtml(l.text)));
 
   if (language) {
