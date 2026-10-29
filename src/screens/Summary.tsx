@@ -125,13 +125,16 @@ export function Summary({ api, mrs, cards, drafts, setDrafts, exitLabel, onExit,
               <div className="review-actions">
                 <button className="primary" disabled={s.busy} onClick={() => run(mr, 'approve')}>
                   ✓ Approve
+                  <small>wysyła komentarze i zatwierdza MR</small>
                 </button>
                 <div className="row">
                   <button className="secondary" disabled={s.busy} onClick={() => run(mr, 'comment')}>
                     Tylko komentarze
+                    <small>bez zatwierdzania i bez blokowania</small>
                   </button>
                   <button className="danger" disabled={s.busy} onClick={() => run(mr, 'request_changes')}>
                     ✗ Poproś o zmiany
+                    <small>autor musi poprawić przed merge</small>
                   </button>
                 </div>
               </div>
