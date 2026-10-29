@@ -47,7 +47,9 @@ export function Login({ onLogin }: { onLogin: (s: Session) => void }) {
         />
       </label>
       <label>
-        Personal Access Token (scope <code>api</code>)
+        <span>
+          Personal Access Token (scope <code>api</code>)
+        </span>
         <input value={token} onChange={(e) => setToken(e.target.value)} type="password" autoComplete="off" />
       </label>
       {saved.token && token === saved.token ? (

@@ -1,6 +1,7 @@
-import { useState, type Dispatch, type SetStateAction } from 'react';
+import { useMemo, useState, type Dispatch, type SetStateAction } from 'react';
+import { QuizView } from '../components/QuizView';
 import type { DraftNote, GitLab, MergeRequest } from '../gitlab';
-import { isViewed } from '../storage';
+import { isViewed, loadAiKey } from '../storage';
 import { mrKey, type Card } from './Deck';
 
 type Props = {
@@ -26,6 +27,12 @@ const DONE: Record<Outcome, string> = {
 export function Summary({ api, mrs, cards, drafts, setDrafts, onExit, onRestart }: Props) {
   const [summaries, setSummaries] = useState<Record<string, string>>({});
   const [status, setStatus] = useState<Record<string, Status>>({});
+  const [aiKey] = useState(loadAiKey);
+  const [quizOpen, setQuizOpen] = useState(false);
+  const quizChanges = useMemo(
+    () => mrs.map((mr) => ({ mr, files: cards.filter((c) => mrKey(c.mr) === mrKey(mr)).map((c) => c.file) })),
+    [mrs, cards],
+  );
 
   const update = (mr: MergeRequest, s: Status) => setStatus((prev) => ({ ...prev, [mrKey(mr)]: s }));
 
@@ -68,6 +75,15 @@ export function Summary({ api, mrs, cards, drafts, setDrafts, onExit, onRestart 
   return (
     <div className="screen summary">
       <h2 className="summary-title">Podsumowanie</h2>
+      {quizOpen ? (
+        <QuizView apiKey={aiKey} changes={quizChanges} onClose={() => setQuizOpen(false)} />
+      ) : aiKey ? (
+        <button className="quiz-start" onClick={() => setQuizOpen(true)}>
+          🧠 Sprawdź się — quiz z tych zmian (5 pytań)
+        </button>
+      ) : (
+        <div className="meta">Dodaj klucz API Anthropic w ustawieniach (⚙︎ na liście MR), żeby po review wygenerować quiz ze zmian.</div>
+      )}
       {mrs.map((mr) => {
         const key = mrKey(mr);
         const files = cards.filter((c) => mrKey(c.mr) === key);

@@ -52,6 +52,11 @@ export function addRecent(mrs: MergeRequest[]) {
   writeJson(RECENT_KEY, [...mrs.map((mr) => ({ mr, openedAt: now })), ...rest].slice(0, RECENT_LIMIT));
 }
 
+// Anthropic API key for generating review quizzes; stays on this device only.
+const AI_KEY = 'mr-tinder:ai-key';
+export const loadAiKey = () => readJson<string>(AI_KEY) ?? '';
+export const saveAiKey = (key: string) => writeJson(AI_KEY, key);
+
 // Per-device display preference: smaller code font in the diff.
 const SMALL_CODE_KEY = 'mr-tinder:small-code';
 export const loadSmallCode = () => readJson<boolean>(SMALL_CODE_KEY) ?? false;

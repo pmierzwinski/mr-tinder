@@ -3,11 +3,13 @@ import { GitLab, type MergeRequest, type User } from './gitlab';
 import { Deck } from './screens/Deck';
 import { Inbox } from './screens/Inbox';
 import { Login } from './screens/Login';
+import { Settings } from './screens/Settings';
 import { addRecent, clearSession, loadSession, saveSession, type Session } from './storage';
 
 export function App() {
   const [session, setSession] = useState<Session | null>(loadSession);
   const [deck, setDeck] = useState<MergeRequest[] | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const api = useMemo(() => (session ? new GitLab(session.baseUrl, session.token) : null), [session]);
 
   // Make the phone's back gesture leave the deck instead of the app.
@@ -34,18 +36,30 @@ export function App() {
     return <Deck api={api} mrs={deck} onExit={() => history.back()} />;
   }
 
+  if (settingsOpen) {
+    return (
+      <Settings
+        session={session}
+        onSessionChange={(s) => {
+          saveSession(s);
+          setSession(s);
+        }}
+        onLogout={() => {
+          clearSession();
+          setSession(null);
+          setSettingsOpen(false);
+        }}
+        onClose={() => setSettingsOpen(false)}
+      />
+    );
+  }
+
   return (
     <>
       <header className="app-header">
         <span>MR Tinder</span>
-        <button
-          className="link"
-          onClick={() => {
-            clearSession();
-            setSession(null);
-          }}
-        >
-          <Avatar user={session.user} /> wyloguj
+        <button className="link settings-button" onClick={() => setSettingsOpen(true)} title="Ustawienia">
+          <Avatar user={session.user} /> ⚙︎
         </button>
       </header>
       <Inbox
