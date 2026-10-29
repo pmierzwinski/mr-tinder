@@ -209,9 +209,8 @@ export class GitLab {
     return this.request<void>('DELETE', `${this.mrPath(mr)}/draft_notes/${id}`);
   }
 
-  /** Publishes the pending review; `reviewerState` also marks the review e.g. as "requested changes". */
-  publishDrafts(mr: MergeRequest, reviewerState?: 'requested_changes' | 'reviewed') {
-    return this.post<void>(`${this.mrPath(mr)}/draft_notes/bulk_publish`, reviewerState && { reviewer_state: reviewerState });
+  publishDrafts(mr: MergeRequest) {
+    return this.post<void>(`${this.mrPath(mr)}/draft_notes/bulk_publish`);
   }
 
   approve(mr: MergeRequest) {

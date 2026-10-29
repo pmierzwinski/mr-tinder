@@ -1,21 +1,18 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import type { GitLab, MergeRequest, Project, User } from '../gitlab';
 import { loadRecent } from '../storage';
-import { loadTaskGroups, type TaskGroup } from '../tasks';
+import { loadInbox, MERGED_DAYS, type InboxData, type TaskGroup } from '../tasks';
 
 /** `taskKey` is set when the MRs were opened from a task, so the review can lead back to it. */
 type Props = { api: GitLab; username: string; onOpen: (mrs: MergeRequest[], taskKey?: string) => void };
 
-type Tab = 'review' | 'tasks' | 'recent' | 'repos';
+type Tab = 'review' | 'recent' | 'repos';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'review', label: 'Do review' },
-  { id: 'tasks', label: 'Taski' },
   { id: 'recent', label: 'Ostatnie' },
-  { id: 'repos', label: 'Repo' },
+  { id: 'repos', label: 'Repozytoria' },
 ];
-
-const MERGED_DAYS = 7;
 
 // Survives the Inbox unmounting while a deck is open, so coming back lands on the same tab.
 let lastTab: Tab = 'review';
@@ -99,8 +96,7 @@ export function Inbox({ api, username, onOpen }: Props) {
             </button>
           ))}
         </div>
-        {tab === 'review' && <ReviewList api={api} username={username} onOpen={onOpen} />}
-        {tab === 'tasks' && <TaskList api={api} username={username} onOpen={onOpen} />}
+        {tab === 'review' && <ReviewInbox api={api} username={username} onOpen={onOpen} />}
         {tab === 'recent' && <RecentList api={api} onOpen={onOpen} />}
         {tab === 'repos' && <RepoBrowser api={api} onOpen={onOpen} />}
       </div>
@@ -117,47 +113,15 @@ function ShowHidden({ count, shown, label, onToggle }: { count: number; shown: b
   );
 }
 
-function ReviewList({ api, username, onOpen }: Props) {
-  const [mrs, setMrs] = useState<MergeRequest[] | null>(null);
-  const [showApproved, setShowApproved] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const statuses = useStatuses(mrs);
+type InboxItem = { kind: 'task'; task: TaskGroup } | { kind: 'mr'; mr: MergeRequest };
 
-  useEffect(() => {
-    Promise.all([api.reviewRequests(username), api.recentlyMerged('reviewer_username', username, MERGED_DAYS)]).then(
-      ([open, merged]) => setMrs([...open, ...merged]),
-      (e) => setError(String(e.message ?? e)),
-    );
-  }, [api, username]);
+const updatedAt = (mr: MergeRequest) => Date.parse(mr.updated_at) || 0;
+const itemUpdatedAt = (item: InboxItem) =>
+  item.kind === 'mr' ? updatedAt(item.mr) : Math.max(...item.task.mrs.map(updatedAt));
 
-  if (error) return <div className="error">{error}</div>;
-  if (!mrs || !statuses) return <div className="loading">Ładuję…</div>;
-
-  const open = mrs.filter((mr) => mr.state !== 'merged');
-  const merged = mrs.filter((mr) => mr.state === 'merged');
-  // Approved MRs hide until merged; merged ones stay visible for a while.
-  const pending = open.filter((mr) => !statuses.get(mr.id)?.approvedByMe);
-  const approved = open.filter((mr) => statuses.get(mr.id)?.approvedByMe);
-
-  return (
-    <div className="list">
-      {!pending.length && <div className="empty">Nikt nie czeka na Twoje review 🎉</div>}
-      {pending.map((mr) => (
-        <MrRow key={mr.id} mr={mr} status={statuses.get(mr.id)} onClick={() => onOpen([mr])} />
-      ))}
-      {merged.length > 0 && <div className="section-title">Zmergowane w ostatnich {MERGED_DAYS} dniach</div>}
-      {merged.map((mr) => (
-        <MrRow key={mr.id} mr={mr} status={statuses.get(mr.id)} onClick={() => onOpen([mr])} />
-      ))}
-      <ShowHidden count={approved.length} shown={showApproved} label="zatwierdzone" onToggle={() => setShowApproved(!showApproved)} />
-      {showApproved &&
-        approved.map((mr) => <MrRow key={mr.id} mr={mr} status={statuses.get(mr.id)} onClick={() => onOpen([mr])} />)}
-    </div>
-  );
-}
-
-function TaskList({ api, username, onOpen }: Props) {
-  const [groups, setGroups] = useState<TaskGroup[] | null>(null);
+/** Tasks (several MRs under one ticket, expandable) and single MRs in one list. */
+function ReviewInbox({ api, username, onOpen }: Props) {
+  const [data, setData] = useState<InboxData | null>(null);
   const [open, setOpenState] = useState<string | null>(lastOpenTask);
   const setOpen = (key: string | null) => {
     lastOpenTask = key;
@@ -165,27 +129,39 @@ function TaskList({ api, username, onOpen }: Props) {
   };
   const [showDone, setShowDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const allMrs = useMemo(() => groups?.flatMap((g) => g.mrs) ?? null, [groups]);
+  const allMrs = useMemo(() => (data ? [...data.tasks.flatMap((g) => g.mrs), ...data.singles] : null), [data]);
   const statuses = useStatuses(allMrs);
 
   useEffect(() => {
-    loadTaskGroups(api, username).then(setGroups, (e) => setError(String(e.message ?? e)));
+    loadInbox(api, username).then(setData, (e) => setError(String(e.message ?? e)));
   }, [api, username]);
 
   if (error) return <div className="error">{error}</div>;
-  if (!groups || !statuses) return <div className="loading">Szukam MR po ticketach…</div>;
+  if (!data || !statuses) return <div className="loading">Ładuję…</div>;
 
-  const isDone = (g: TaskGroup) => g.mrs.every((mr) => statuses.get(mr.id)?.done);
-  const active = groups.filter((g) => !isDone(g));
-  const done = groups.filter(isDone);
+  const taskDone = (g: TaskGroup) => g.mrs.every((mr) => statuses.get(mr.id)?.done);
+  // A single MR I approved hides until it's merged; merged ones stay visible for a while.
+  const singleDone = (mr: MergeRequest) => mr.state !== 'merged' && !!statuses.get(mr.id)?.approvedByMe;
 
-  const renderGroup = (g: TaskGroup) => (
-    <div key={g.key} className={`group${isDone(g) ? ' finished' : ''}`}>
+  const active: InboxItem[] = [
+    ...data.tasks.filter((g) => !taskDone(g)).map((task) => ({ kind: 'task' as const, task })),
+    ...data.singles.filter((mr) => mr.state !== 'merged' && !singleDone(mr)).map((mr) => ({ kind: 'mr' as const, mr })),
+  ].sort((a, b) => itemUpdatedAt(b) - itemUpdatedAt(a));
+  const merged = data.singles.filter((mr) => mr.state === 'merged');
+  const done: InboxItem[] = [
+    ...data.tasks.filter(taskDone).map((task) => ({ kind: 'task' as const, task })),
+    ...data.singles.filter(singleDone).map((mr) => ({ kind: 'mr' as const, mr })),
+  ];
+
+  const renderTask = (g: TaskGroup) => (
+    <div key={g.key} className={`group${taskDone(g) ? ' finished' : ''}`}>
       <div className="group-head" onClick={() => setOpen(open === g.key ? null : g.key)}>
         <div>
-          <div className="group-title">{g.key}</div>
+          <div className="group-title">
+            <span className="kind-chip task">TASK</span> {g.key}
+          </div>
           <div className="meta">
-            {g.mrs.filter((mr) => statuses.get(mr.id)?.done).length}/{g.mrs.length} gotowe ·{' '}
+            {g.mrs.length} MR · {g.mrs.filter((mr) => statuses.get(mr.id)?.done).length} gotowe ·{' '}
             {new Set(g.mrs.map((m) => m.project_id)).size} repo · {open === g.key ? 'zwiń ▴' : 'pokaż ▾'}
           </div>
         </div>
@@ -207,18 +183,23 @@ function TaskList({ api, username, onOpen }: Props) {
     </div>
   );
 
+  const renderItem = (item: InboxItem) =>
+    item.kind === 'task' ? (
+      renderTask(item.task)
+    ) : (
+      <MrRow key={item.mr.id} mr={item.mr} status={statuses.get(item.mr.id)} chip onClick={() => onOpen([item.mr])} />
+    );
+
   return (
     <div className="list">
-      {!active.length && (
-        <div className="empty">
-          {groups.length
-            ? 'Wszystkie taski są zrobione 🎉'
-            : 'Brak MR z ticketem Jiry (np. WOH-123) przypisanych do Ciebie ani czekających na Twoje review.'}
-        </div>
-      )}
-      {active.map(renderGroup)}
-      <ShowHidden count={done.length} shown={showDone} label="zrobione" onToggle={() => setShowDone(!showDone)} />
-      {showDone && done.map(renderGroup)}
+      {!active.length && <div className="empty">Nic nie czeka na Twoje review 🎉</div>}
+      {active.map(renderItem)}
+      {merged.length > 0 && <div className="section-title">Zmergowane w ostatnich {MERGED_DAYS} dniach</div>}
+      {merged.map((mr) => (
+        <MrRow key={mr.id} mr={mr} status={statuses.get(mr.id)} chip onClick={() => onOpen([mr])} />
+      ))}
+      <ShowHidden count={done.length} shown={showDone} label="zakończone" onToggle={() => setShowDone(!showDone)} />
+      {showDone && done.map(renderItem)}
     </div>
   );
 }
@@ -327,12 +308,14 @@ function RepoBrowser({ api, onOpen }: Omit<Props, 'username'>) {
   );
 }
 
-type MrRowProps = { mr: MergeRequest; status?: MrStatus | null; onClick: () => void; children?: React.ReactNode };
+/** `chip` marks a standalone MR in a list that also holds tasks. */
+type MrRowProps = { mr: MergeRequest; status?: MrStatus | null; chip?: boolean; onClick: () => void; children?: React.ReactNode };
 
-function MrRow({ mr, status, onClick, children }: MrRowProps) {
+function MrRow({ mr, status, chip, onClick, children }: MrRowProps) {
   return (
     <div className={`row-item${status?.approvedByMe ? ' approved' : ''}`} onClick={onClick}>
       <div className="meta">
+        {chip && <span className="kind-chip">MR</span>}
         {mr.references.full}
         {mr.draft && <span className="badge">draft</span>}
         {mr.state === 'merged' && <span className="badge merged">merged</span>}

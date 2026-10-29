@@ -17,12 +17,11 @@ type Props = {
 
 type Status = { busy?: boolean; done?: string; error?: string };
 
-type Outcome = 'comment' | 'approve' | 'request_changes';
+type Outcome = 'comment' | 'approve';
 
 const DONE: Record<Outcome, string> = {
-  comment: 'Review wysłane ✓',
+  comment: 'Komentarze wysłane ✓',
   approve: 'Zatwierdzone ✓',
-  request_changes: 'Poproszono o zmiany ✗',
 };
 
 export function Summary({ api, mrs, cards, drafts, setDrafts, exitLabel, onExit, onRestart }: Props) {
@@ -43,9 +42,7 @@ export function Summary({ api, mrs, cards, drafts, setDrafts, exitLabel, onExit,
     try {
       const summary = summaries[key]?.trim();
       if (summary) await api.createDraftNote(mr, summary);
-      // Requesting changes always publishes: GitLab sets the reviewer state as part of the publish.
-      if (outcome === 'request_changes') await api.publishDrafts(mr, 'requested_changes');
-      else if (summary || drafts[key]?.length) await api.publishDrafts(mr);
+      if (summary || drafts[key]?.length) await api.publishDrafts(mr);
       setDrafts((d) => ({ ...d, [key]: [] }));
       setSummaries((s) => ({ ...s, [key]: '' }));
       if (outcome === 'approve') await api.approve(mr);
@@ -120,23 +117,15 @@ export function Summary({ api, mrs, cards, drafts, setDrafts, exitLabel, onExit,
             />
             {s.error && <div className="error">{s.error}</div>}
             {s.done ? (
-              <div className={`done${s.done === DONE.request_changes ? ' rejected' : ''}`}>{s.done}</div>
+              <div className="done">{s.done}</div>
             ) : (
               <div className="review-actions">
                 <button className="primary" disabled={s.busy} onClick={() => run(mr, 'approve')}>
                   ✓ Approve
-                  <small>wysyła komentarze i zatwierdza MR</small>
                 </button>
-                <div className="row">
-                  <button className="secondary" disabled={s.busy} onClick={() => run(mr, 'comment')}>
-                    Tylko komentarze
-                    <small>bez zatwierdzania i bez blokowania</small>
-                  </button>
-                  <button className="danger" disabled={s.busy} onClick={() => run(mr, 'request_changes')}>
-                    ✗ Poproś o zmiany
-                    <small>autor musi poprawić przed merge</small>
-                  </button>
-                </div>
+                <button className="secondary" disabled={s.busy || !(drafts[key]?.length || summaries[key]?.trim())} onClick={() => run(mr, 'comment')}>
+                  Wyślij komentarze bez approve
+                </button>
               </div>
             )}
           </div>

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { GitLab } from '../gitlab';
 import { providerForKey } from '../quiz';
 import { loadAiKey, normalizeUrl, saveAiKey, saveCredentials, type Session } from '../storage';
@@ -18,6 +18,13 @@ export function Settings({ session, onSessionChange, onLogout, onClose }: Props)
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+
+  // The confirmation lives on the save button itself, where the user is looking.
+  useEffect(() => {
+    if (!saved) return;
+    const t = setTimeout(() => setSaved(false), 2500);
+    return () => clearTimeout(t);
+  }, [saved]);
 
   const url = normalizeUrl(baseUrl);
   const gitlabChanged = url !== session.baseUrl || token.trim() !== '';
@@ -77,6 +84,9 @@ export function Settings({ session, onSessionChange, onLogout, onClose }: Props)
             utwórz nowy token
           </a>
         </div>
+        <button className="link small logout" onClick={() => confirm('Wylogować z GitLaba na tym urządzeniu?') && onLogout()}>
+          Wyloguj
+        </button>
       </section>
 
       <section className="settings-section">
@@ -96,7 +106,7 @@ export function Settings({ session, onSessionChange, onLogout, onClose }: Props)
             Rozpoznany dostawca: <b>{providerForKey(aiKey.trim()) === 'gemini' ? 'Google Gemini' : 'Anthropic Claude'}</b>
           </div>
         )}
-        <div className="meta">
+        <p className="hint small">
           Po review możesz wygenerować quiz z 5 pytań o zmiany. Klucz Gemini utworzysz w{' '}
           <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">
             Google AI Studio
@@ -106,7 +116,7 @@ export function Settings({ session, onSessionChange, onLogout, onClose }: Props)
             konsoli Anthropic
           </a>
           . Klucz zostaje tylko na tym urządzeniu, a diffy trafiają do dostawcy tylko przy generowaniu quizu.
-        </div>
+        </p>
         {providerForKey(aiKey.trim()) === 'gemini' && aiKey.trim() && (
           <div className="warning">
             Uwaga: w darmowym planie Gemini Google może wykorzystywać przesłane treści (tu: diffy kodu) do ulepszania
@@ -116,14 +126,10 @@ export function Settings({ session, onSessionChange, onLogout, onClose }: Props)
       </section>
 
       {error && <div className="error">{error}</div>}
-      {saved && <div className="done">Zapisano ✓</div>}
 
       <div className="bottom-bar">
-        <button className="secondary big" onClick={onLogout}>
-          Wyloguj
-        </button>
-        <button className="primary big" onClick={save} disabled={busy || !url}>
-          {busy ? 'Sprawdzam…' : 'Zapisz'}
+        <button className={`primary big${saved ? ' saved' : ''}`} onClick={save} disabled={busy || !url}>
+          {busy ? 'Sprawdzam…' : saved ? 'Zapisano ✓' : 'Zapisz'}
         </button>
       </div>
     </div>

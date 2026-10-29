@@ -2,7 +2,7 @@ import type { GitLab, MergeRequest } from './gitlab';
 
 export type TaskGroup = { key: string; mrs: MergeRequest[] };
 
-const MERGED_DAYS = 14;
+export const MERGED_DAYS = 7;
 
 // Titles use upper case ("WOH-123: Fix…"); branches are often lower case ("feature/woh-123-fix").
 const KEY_IN_TITLE = /\b([A-Z][A-Z0-9]{1,9}-\d+)\b/;
@@ -18,15 +18,23 @@ function mentionsKey(mr: MergeRequest, key: string) {
   return re.test(mr.title) || re.test(mr.source_branch);
 }
 
+export type InboxData = {
+  /** Tickets with more than one MR. */
+  tasks: TaskGroup[];
+  /** MRs waiting for my review that aren't part of a multi-MR ticket. */
+  singles: MergeRequest[];
+};
+
 /**
- * Tickets come from MRs assigned to me or waiting for my review (open, or merged recently); each
- * ticket then collects every open or merged MR mentioning it (title or branch) in projects I'm a member of.
+ * Everything for the "Do review" tab. Tickets come from MRs assigned to me or waiting for my review
+ * (open, or merged recently); each ticket collects every open or merged MR mentioning it (title or
+ * branch) in projects I'm a member of. Review requests without a multi-MR ticket stay single MRs.
  */
-export async function loadTaskGroups(api: GitLab, username: string): Promise<TaskGroup[]> {
+export async function loadInbox(api: GitLab, username: string): Promise<InboxData> {
   const [assigned, reviewing, assignedMerged, reviewedMerged, member] = await Promise.all([
     api.assignedMergeRequests(username),
     api.reviewRequests(username),
-    // Recently merged ones keep finished tickets around instead of vanishing on merge.
+    // Recently merged ones keep finished work around instead of vanishing on merge.
     api.recentlyMerged('assignee_username', username, MERGED_DAYS),
     api.recentlyMerged('reviewer_username', username, MERGED_DAYS),
     api.memberProjectIds(),
@@ -46,6 +54,8 @@ export async function loadTaskGroups(api: GitLab, username: string): Promise<Tas
     }),
   );
 
-  const latest = (g: TaskGroup) => Math.max(...g.mrs.map((mr) => Date.parse(mr.updated_at) || 0));
-  return groups.sort((a, b) => latest(b) - latest(a));
+  const tasks = groups.filter((g) => g.mrs.length > 1);
+  const inTask = new Set(tasks.flatMap((g) => g.mrs.map((mr) => mr.id)));
+  const singles = [...reviewing, ...reviewedMerged].filter((mr) => !inTask.has(mr.id));
+  return { tasks, singles };
 }
