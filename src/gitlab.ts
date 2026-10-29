@@ -42,6 +42,16 @@ export type Position = DiffRefs & {
 
 export type DraftNote = { id: number; note: string; position?: Partial<Position> | null };
 
+export type Approvals = {
+  approved?: boolean;
+  approvals_required?: number;
+  approvals_left?: number;
+  approved_by: { user: User }[];
+};
+
+export type ReviewerState = 'unreviewed' | 'review_started' | 'reviewed' | 'requested_changes' | 'approved' | 'unapproved';
+export type Reviewer = { user: User; state?: ReviewerState };
+
 export class ApiError extends Error {
   constructor(readonly status: number, message: string) {
     super(message);
@@ -153,6 +163,14 @@ export class GitLab {
     }
   }
 
+  approvals(mr: MergeRequest) {
+    return this.get<Approvals>(`${this.mrPath(mr)}/approvals`);
+  }
+
+  reviewers(mr: MergeRequest) {
+    return this.get<Reviewer[]>(`${this.mrPath(mr)}/reviewers`);
+  }
+
   /** File content at the MR's head commit, as lines. */
   async fileLines(mr: MergeRequest, path: string): Promise<string[]> {
     const ref = mr.diff_refs?.head_sha ?? mr.sha;
@@ -183,8 +201,9 @@ export class GitLab {
     return this.request<void>('DELETE', `${this.mrPath(mr)}/draft_notes/${id}`);
   }
 
-  publishDrafts(mr: MergeRequest) {
-    return this.post<void>(`${this.mrPath(mr)}/draft_notes/bulk_publish`);
+  /** Publishes the pending review; `reviewerState` also marks the review e.g. as "requested changes". */
+  publishDrafts(mr: MergeRequest, reviewerState?: 'requested_changes' | 'reviewed') {
+    return this.post<void>(`${this.mrPath(mr)}/draft_notes/bulk_publish`, reviewerState && { reviewer_state: reviewerState });
   }
 
   approve(mr: MergeRequest) {

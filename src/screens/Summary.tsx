@@ -15,23 +15,33 @@ type Props = {
 
 type Status = { busy?: boolean; done?: string; error?: string };
 
+type Outcome = 'comment' | 'approve' | 'request_changes';
+
+const DONE: Record<Outcome, string> = {
+  comment: 'Review wysłane ✓',
+  approve: 'Zatwierdzone ✓',
+  request_changes: 'Poproszono o zmiany ✗',
+};
+
 export function Summary({ api, mrs, cards, drafts, setDrafts, onExit, onRestart }: Props) {
   const [summaries, setSummaries] = useState<Record<string, string>>({});
   const [status, setStatus] = useState<Record<string, Status>>({});
 
   const update = (mr: MergeRequest, s: Status) => setStatus((prev) => ({ ...prev, [mrKey(mr)]: s }));
 
-  const run = async (mr: MergeRequest, approve: boolean) => {
+  const run = async (mr: MergeRequest, outcome: Outcome) => {
     const key = mrKey(mr);
     update(mr, { busy: true });
     try {
       const summary = summaries[key]?.trim();
       if (summary) await api.createDraftNote(mr, summary);
-      if (summary || drafts[key]?.length) await api.publishDrafts(mr);
+      // Requesting changes always publishes: GitLab sets the reviewer state as part of the publish.
+      if (outcome === 'request_changes') await api.publishDrafts(mr, 'requested_changes');
+      else if (summary || drafts[key]?.length) await api.publishDrafts(mr);
       setDrafts((d) => ({ ...d, [key]: [] }));
       setSummaries((s) => ({ ...s, [key]: '' }));
-      if (approve) await api.approve(mr);
-      update(mr, { done: approve ? 'Zatwierdzone ✓' : 'Review wysłane ✓' });
+      if (outcome === 'approve') await api.approve(mr);
+      update(mr, { done: DONE[outcome] });
     } catch (e) {
       update(mr, { error: String(e instanceof Error ? e.message : e) });
     }
@@ -93,15 +103,20 @@ export function Summary({ api, mrs, cards, drafts, setDrafts, onExit, onRestart 
             />
             {s.error && <div className="error">{s.error}</div>}
             {s.done ? (
-              <div className="done">{s.done}</div>
+              <div className={`done${s.done === DONE.request_changes ? ' rejected' : ''}`}>{s.done}</div>
             ) : (
-              <div className="row">
-                <button className="secondary" disabled={s.busy} onClick={() => run(mr, false)}>
-                  Wyślij review
+              <div className="review-actions">
+                <button className="primary" disabled={s.busy} onClick={() => run(mr, 'approve')}>
+                  ✓ Approve
                 </button>
-                <button className="primary" disabled={s.busy} onClick={() => run(mr, true)}>
-                  Approve
-                </button>
+                <div className="row">
+                  <button className="secondary" disabled={s.busy} onClick={() => run(mr, 'comment')}>
+                    Tylko komentarze
+                  </button>
+                  <button className="danger" disabled={s.busy} onClick={() => run(mr, 'request_changes')}>
+                    ✗ Poproś o zmiany
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -109,7 +124,7 @@ export function Summary({ api, mrs, cards, drafts, setDrafts, onExit, onRestart 
       })}
 
       {mrs.length > 1 && (
-        <button className="primary wide" onClick={() => mrs.filter((mr) => !status[mrKey(mr)]?.done).forEach((mr) => run(mr, true))}>
+        <button className="primary wide" onClick={() => mrs.filter((mr) => !status[mrKey(mr)]?.done).forEach((mr) => run(mr, 'approve'))}>
           Approve wszystkie ({mrs.length})
         </button>
       )}

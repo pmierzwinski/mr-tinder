@@ -1,10 +1,13 @@
-import { useEffect, useState } from 'react';
-import type { GitLab, MergeRequest, Project } from '../gitlab';
+import { createContext, useContext, useEffect, useState } from 'react';
+import type { Approvals, GitLab, MergeRequest, Project, Reviewer } from '../gitlab';
 import { loadTaskGroups, type TaskGroup } from '../tasks';
 
 type Props = { api: GitLab; username: string; onOpen: (mrs: MergeRequest[]) => void };
 
 type Tab = 'review' | 'tasks' | 'repos';
+
+// Lets every MR row fetch its own approval status without threading api/username through each list.
+const StatusContext = createContext<{ api: GitLab; username: string } | null>(null);
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'review', label: 'Do review' },
@@ -15,18 +18,20 @@ const TABS: { id: Tab; label: string }[] = [
 export function Inbox({ api, username, onOpen }: Props) {
   const [tab, setTab] = useState<Tab>('review');
   return (
-    <div className="screen">
-      <div className="tabs">
-        {TABS.map((t) => (
-          <button key={t.id} className={tab === t.id ? 'active' : ''} onClick={() => setTab(t.id)}>
-            {t.label}
-          </button>
-        ))}
+    <StatusContext.Provider value={{ api, username }}>
+      <div className="screen">
+        <div className="tabs">
+          {TABS.map((t) => (
+            <button key={t.id} className={tab === t.id ? 'active' : ''} onClick={() => setTab(t.id)}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+        {tab === 'review' && <ReviewList api={api} username={username} onOpen={onOpen} />}
+        {tab === 'tasks' && <TaskList api={api} username={username} onOpen={onOpen} />}
+        {tab === 'repos' && <RepoBrowser api={api} onOpen={onOpen} />}
       </div>
-      {tab === 'review' && <ReviewList api={api} username={username} onOpen={onOpen} />}
-      {tab === 'tasks' && <TaskList api={api} username={username} onOpen={onOpen} />}
-      {tab === 'repos' && <RepoBrowser api={api} onOpen={onOpen} />}
-    </div>
+    </StatusContext.Provider>
   );
 }
 
@@ -175,7 +180,50 @@ function MrRow({ mr, onClick, children }: { mr: MergeRequest; onClick: () => voi
       <div className="meta">
         {mr.author.name} · <code>{mr.source_branch}</code> → <code>{mr.target_branch}</code>
       </div>
+      <MrStatus mr={mr} />
       {children}
+    </div>
+  );
+}
+
+function MrStatus({ mr }: { mr: MergeRequest }) {
+  const ctx = useContext(StatusContext)!;
+  const [approvals, setApprovals] = useState<Approvals | null>(null);
+  const [reviewers, setReviewers] = useState<Reviewer[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    ctx.api.approvals(mr).then((a) => !cancelled && setApprovals(a), () => {});
+    // Reviewer states need a newer GitLab; without them we just show approvals.
+    ctx.api.reviewers(mr).then((r) => !cancelled && setReviewers(r), () => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [ctx.api, mr]);
+
+  if (!approvals) return null;
+  const approvedBy = approvals.approved_by.map((a) => a.user);
+  const me = ctx.username;
+  const changes = reviewers.filter((r) => r.state === 'requested_changes').map((r) => r.user);
+  const required = approvals.approvals_required ?? 0;
+  const count = required ? `${approvedBy.length}/${required}` : String(approvedBy.length);
+
+  return (
+    <div className="mr-status">
+      {approvedBy.some((u) => u.username === me) ? (
+        <span className="status ok">✓ Zatwierdzone przez Ciebie{approvedBy.length > 1 ? ` (+${approvedBy.length - 1})` : ''}</span>
+      ) : approvedBy.length ? (
+        <span className="status ok" title={approvedBy.map((u) => u.name).join(', ')}>
+          ✓ {count} approve: {approvedBy.map((u) => u.name.split(' ')[0]).join(', ')}
+        </span>
+      ) : (
+        <span className="status muted">Brak approve{required ? ` (0/${required})` : ''}</span>
+      )}
+      {changes.length > 0 && (
+        <span className="status bad">
+          ✗ {changes.some((u) => u.username === me) ? 'Prosisz o zmiany' : `Zmiany: ${changes.map((u) => u.name.split(' ')[0]).join(', ')}`}
+        </span>
+      )}
     </div>
   );
 }
