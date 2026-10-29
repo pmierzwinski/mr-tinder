@@ -2,6 +2,8 @@ import type { GitLab, MergeRequest } from './gitlab';
 
 export type TaskGroup = { key: string; mrs: MergeRequest[] };
 
+const MERGED_DAYS = 14;
+
 // Titles use upper case ("WOH-123: Fix…"); branches are often lower case ("feature/woh-123-fix").
 const KEY_IN_TITLE = /\b([A-Z][A-Z0-9]{1,9}-\d+)\b/;
 const KEY_IN_BRANCH = /(?:^|\/)([a-z][a-z0-9]{1,9}-\d+)(?=$|[^0-9])/i;
@@ -17,17 +19,20 @@ function mentionsKey(mr: MergeRequest, key: string) {
 }
 
 /**
- * Tickets come from MRs assigned to me or waiting for my review; each ticket then collects
- * every open MR mentioning it (title or branch) in projects I'm a member of.
+ * Tickets come from MRs assigned to me or waiting for my review (open, or merged recently); each
+ * ticket then collects every open or merged MR mentioning it (title or branch) in projects I'm a member of.
  */
 export async function loadTaskGroups(api: GitLab, username: string): Promise<TaskGroup[]> {
-  const [assigned, reviewing, member] = await Promise.all([
+  const [assigned, reviewing, assignedMerged, reviewedMerged, member] = await Promise.all([
     api.assignedMergeRequests(username),
     api.reviewRequests(username),
+    // Recently merged ones keep finished tickets around instead of vanishing on merge.
+    api.recentlyMerged('assignee_username', username, MERGED_DAYS),
+    api.recentlyMerged('reviewer_username', username, MERGED_DAYS),
     api.memberProjectIds(),
   ]);
   const seeds = new Map<string, MergeRequest[]>();
-  for (const mr of [...assigned, ...reviewing]) {
+  for (const mr of [...assigned, ...reviewing, ...assignedMerged, ...reviewedMerged]) {
     const key = jiraKey(mr);
     if (key) seeds.set(key, [...(seeds.get(key) ?? []), mr]);
   }

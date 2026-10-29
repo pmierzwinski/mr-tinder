@@ -15,6 +15,7 @@ export type MergeRequest = {
   web_url: string;
   sha: string;
   draft: boolean;
+  state: 'opened' | 'closed' | 'merged' | 'locked';
   author: User;
   references: { full: string };
   updated_at: string;
@@ -120,9 +121,16 @@ export class GitLab {
     return this.getAll<MergeRequest>('/merge_requests', { scope: 'all', state: 'opened', assignee_username: username });
   }
 
-  /** Searches open MRs in all visible projects by title/description. */
-  searchMergeRequests(search: string) {
-    return this.getAll<MergeRequest>('/merge_requests', { scope: 'all', state: 'opened', search }, 3);
+  /** MRs merged in the last `days` days where I'm the reviewer or the assignee. */
+  recentlyMerged(role: 'reviewer_username' | 'assignee_username', username: string, days: number) {
+    const updatedAfter = new Date(Date.now() - days * 86400000).toISOString();
+    return this.getAll<MergeRequest>('/merge_requests', { scope: 'all', state: 'merged', [role]: username, updated_after: updatedAfter });
+  }
+
+  /** Searches open and merged MRs in all visible projects by title/description. */
+  async searchMergeRequests(search: string) {
+    const found = await this.getAll<MergeRequest>('/merge_requests', { scope: 'all', state: 'all', search }, 3);
+    return found.filter((mr) => mr.state !== 'closed');
   }
 
   async memberProjectIds() {

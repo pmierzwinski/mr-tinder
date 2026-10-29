@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { GitLab, type MergeRequest } from './gitlab';
+import { GitLab, type MergeRequest, type User } from './gitlab';
 import { Deck } from './screens/Deck';
 import { Inbox } from './screens/Inbox';
 import { Login } from './screens/Login';
-import { clearSession, loadSession, saveSession, type Session } from './storage';
+import { addRecent, clearSession, loadSession, saveSession, type Session } from './storage';
 
 export function App() {
   const [session, setSession] = useState<Session | null>(loadSession);
@@ -45,10 +45,33 @@ export function App() {
             setSession(null);
           }}
         >
-          <img src={session.user.avatar_url} alt="" /> wyloguj
+          <Avatar user={session.user} /> wyloguj
         </button>
       </header>
-      <Inbox api={api} username={session.user.username} onOpen={setDeck} />
+      <Inbox
+        api={api}
+        username={session.user.username}
+        onOpen={(mrs) => {
+          addRecent(mrs);
+          setDeck(mrs);
+        }}
+      />
     </>
+  );
+}
+
+// GitLab-hosted avatars often need a GitLab session cookie, so fall back to initials when they fail.
+function Avatar({ user }: { user: User }) {
+  const [failed, setFailed] = useState(!user.avatar_url);
+  const initials = user.name
+    .split(/\s+/)
+    .map((w) => w[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
+  return failed ? (
+    <span className="avatar">{initials}</span>
+  ) : (
+    <img className="avatar" src={user.avatar_url} alt="" onError={() => setFailed(true)} />
   );
 }

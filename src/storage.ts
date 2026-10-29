@@ -38,6 +38,20 @@ export function loadCredentials(): Credentials {
 }
 export const saveCredentials = (c: Credentials) => writeJson(CREDENTIALS_KEY, c);
 
+// MRs opened in the app, newest first, for the "Ostatnie" tab.
+export type RecentEntry = { mr: MergeRequest; openedAt: number };
+const RECENT_KEY = 'mr-tinder:recent';
+const RECENT_LIMIT = 30;
+
+export const loadRecent = () => readJson<RecentEntry[]>(RECENT_KEY) ?? [];
+
+export function addRecent(mrs: MergeRequest[]) {
+  const now = Date.now();
+  const ids = new Set(mrs.map((mr) => mr.id));
+  const rest = loadRecent().filter((e) => !ids.has(e.mr.id));
+  writeJson(RECENT_KEY, [...mrs.map((mr) => ({ mr, openedAt: now })), ...rest].slice(0, RECENT_LIMIT));
+}
+
 // Per-device display preference: smaller code font in the diff.
 const SMALL_CODE_KEY = 'mr-tinder:small-code';
 export const loadSmallCode = () => readJson<boolean>(SMALL_CODE_KEY) ?? false;

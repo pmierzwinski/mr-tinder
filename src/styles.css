@@ -202,10 +202,17 @@ code {
   padding: 12px 16px 0;
   font-weight: 700;
 }
-.app-header img {
+.app-header .avatar {
   width: 24px;
   height: 24px;
   border-radius: 50%;
+  display: inline-grid;
+  place-items: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: #fff;
+  background: var(--gradient);
+  object-fit: cover;
 }
 .tabs {
   display: flex;
@@ -216,7 +223,9 @@ code {
 .tabs button {
   flex: 1;
   background: none;
-  padding: 8px;
+  padding: 8px 4px;
+  font-size: 14px;
+  white-space: nowrap;
   border-radius: 9px;
   color: var(--muted);
 }
@@ -272,6 +281,27 @@ code {
 .status.muted {
   color: var(--muted);
   background: var(--surface-2);
+}
+.badge.merged {
+  color: #c4a8ff;
+  background: rgba(150, 110, 255, 0.18);
+}
+.section-title {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 8px 4px 0;
+}
+.show-hidden {
+  align-self: center;
+  margin: 4px 0;
+}
+.group.finished {
+  opacity: 0.7;
+  border-color: rgba(34, 211, 160, 0.45);
+  background: rgba(34, 211, 160, 0.04);
 }
 .group {
   border: 1px solid rgba(255, 77, 109, 0.45);
