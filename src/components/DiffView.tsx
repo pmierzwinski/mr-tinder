@@ -89,6 +89,9 @@ export function DiffView({ path, lines, notesFor, onDeleteNote, picking, onPick,
       }
     : {};
 
+  // Gutters only as wide as the longest line number needs.
+  const digits = String(Math.max(1, ...lines.map((l) => Math.max(l.oldLine ?? 0, l.newLine ?? 0)))).length;
+
   const active = picking ? hover : highlight;
   const activeLine = active === null ? null : lines[active];
 
@@ -110,7 +113,12 @@ export function DiffView({ path, lines, notesFor, onDeleteNote, picking, onPick,
           </div>
         </div>
       )}
-      <div ref={scroller} className={`diff${picking ? ' picking' : ''}`} {...pickHandlers}>
+      <div
+        ref={scroller}
+        className={`diff${picking ? ' picking' : ''}`}
+        style={{ '--ln-width': `${digits}ch` } as React.CSSProperties}
+        {...pickHandlers}
+      >
         {lines.map((l, i) =>
           l.type === 'hunk' ? (
             <HunkHeader key={i} line={l} gap={hunkGap(lines, i)} onExpand={(mode) => onExpand(i, mode)} />

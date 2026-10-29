@@ -253,6 +253,34 @@ code {
 .deck {
   height: 100dvh;
   overflow: hidden;
+  /* the diff needs every pixel of width */
+  padding-left: 4px;
+  padding-right: 4px;
+  gap: 8px;
+}
+.deck .deck-top,
+.deck .actions {
+  padding: 0 8px;
+}
+.font-toggle {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 2px 8px;
+  font-weight: 700;
+  color: var(--muted);
+}
+.font-toggle small {
+  font-size: 0.7em;
+}
+.font-toggle.on {
+  color: var(--warn);
+  border-color: var(--warn);
+}
+.small-code .diff,
+.small-code .expander,
+.small-code .expander button {
+  font-size: 10px;
 }
 .deck-top {
   display: flex;
@@ -281,7 +309,7 @@ code {
   inset: 0;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 16px;
+  border-radius: 12px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -315,7 +343,7 @@ code {
   transform: rotate(12deg);
 }
 .card-head {
-  padding: 12px 14px;
+  padding: 8px 10px;
   border-bottom: 1px solid var(--border);
   display: flex;
   flex-direction: column;
@@ -340,16 +368,19 @@ code {
 }
 .diff-line {
   display: grid;
-  grid-template-columns: 34px 34px 1fr;
+  grid-template-columns: var(--ln-width, 3ch) var(--ln-width, 3ch) 1fr;
+  column-gap: 4px;
+  padding-left: 2px;
 }
 .diff-line .ln {
   color: var(--muted);
   text-align: right;
-  padding-right: 6px;
   opacity: 0.6;
 }
 .diff-line .code {
   white-space: pre-wrap;
+  tab-size: 2;
+  padding-left: 2px;
   overflow-wrap: anywhere;
   padding-right: 8px;
 }
@@ -430,7 +461,7 @@ code {
   font-weight: 800;
 }
 .inline-note {
-  margin: 4px 8px 6px 40px;
+  margin: 4px 6px 6px 16px;
   background: var(--surface-2);
   border-left: 3px solid var(--warn);
   border-radius: 6px;

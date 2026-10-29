@@ -38,6 +38,11 @@ export function loadCredentials(): Credentials {
 }
 export const saveCredentials = (c: Credentials) => writeJson(CREDENTIALS_KEY, c);
 
+// Per-device display preference: smaller code font in the diff.
+const SMALL_CODE_KEY = 'mr-tinder:small-code';
+export const loadSmallCode = () => readJson<boolean>(SMALL_CODE_KEY) ?? false;
+export const saveSmallCode = (on: boolean) => writeJson(SMALL_CODE_KEY, on);
+
 /** Accepts "gitlab.example.com", "https://gitlab.example.com/" etc. */
 export function normalizeUrl(input: string) {
   const url = input.trim().replace(/\/+$/, '');

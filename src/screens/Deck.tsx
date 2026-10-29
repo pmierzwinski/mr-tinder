@@ -4,7 +4,7 @@ import { DiffView, InlineNote } from '../components/DiffView';
 import { SwipeCard } from '../components/SwipeCard';
 import { diffStats, expandEnd, expandHunk, parseDiff, trailingGap, type DiffLine, type ExpandMode } from '../diff';
 import { ApiError, type DraftNote, type FileDiff, type GitLab, type MergeRequest, type Position } from '../gitlab';
-import { hashDiff, isViewed, setViewed } from '../storage';
+import { hashDiff, isViewed, loadSmallCode, saveSmallCode, setViewed } from '../storage';
 import { Summary } from './Summary';
 
 /** `fileLength` is known once the full file was fetched to expand context. */
@@ -48,6 +48,7 @@ export function Deck({ api, mrs, onExit }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const fileCache = useRef(new Map<string, Promise<string[]>>());
+  const [smallCode, setSmallCode] = useState(loadSmallCode);
 
   useEffect(() => {
     let cancelled = false;
@@ -214,7 +215,7 @@ export function Deck({ api, mrs, onExit }: Props) {
   const fileNotes = fileDrafts.filter((d) => !d.position?.new_line && !d.position?.old_line);
 
   return (
-    <div className="screen deck">
+    <div className={`screen deck${smallCode ? ' small-code' : ''}`}>
       <div className="deck-top">
         <button className="link" onClick={onExit}>
           ✕
@@ -225,6 +226,16 @@ export function Deck({ api, mrs, onExit }: Props) {
         <span className="meta">
           {index + 1}/{cards.length}
         </span>
+        <button
+          className={`font-toggle${smallCode ? ' on' : ''}`}
+          onClick={() => {
+            saveSmallCode(!smallCode);
+            setSmallCode(!smallCode);
+          }}
+          title="Mniejsza czcionka kodu"
+        >
+          A<small>A</small>
+        </button>
         <button className="link" onClick={() => setIndex(cards.length)}>
           Koniec →
         </button>
