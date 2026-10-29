@@ -450,9 +450,6 @@ code {
   white-space: pre-wrap;
   word-break: break-word;
 }
-.round.comment.on {
-  outline: 3px solid var(--text);
-}
 
 .actions {
   display: flex;
@@ -603,4 +600,50 @@ button.big {
   font-size: 16px;
   white-space: nowrap;
   border: 1px solid var(--border);
+}
+
+/* comment mode: the whole card gets a soft violet frame */
+.swipe-card.picking {
+  border-color: var(--warn);
+  box-shadow: 0 0 0 2px var(--warn), 0 0 28px rgba(180, 156, 255, 0.35);
+}
+.pick-actions button {
+  flex: 1;
+}
+
+/* words that changed inside a modified line */
+.diff-line.add .chg {
+  background: rgba(34, 211, 160, 0.38);
+  border-radius: 3px;
+}
+.diff-line.del .chg {
+  background: rgba(255, 107, 107, 0.42);
+  border-radius: 3px;
+}
+
+/* hunk header with "show more code" buttons */
+.expander {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.expander button {
+  background: rgba(180, 156, 255, 0.14);
+  color: var(--warn);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-family: var(--mono);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.hunk-section {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }

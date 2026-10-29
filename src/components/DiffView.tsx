@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
-import { isCommentable, type DiffLine } from '../diff';
+import { EXPAND_STEP, hunkGap, isCommentable, type DiffLine, type ExpandMode } from '../diff';
 import type { DraftNote } from '../gitlab';
-import { highlightDiff, languageFor } from '../highlight';
+import { languageFor, renderDiff } from '../highlight';
 
 type Props = {
   path: string;
@@ -11,21 +11,22 @@ type Props = {
   /** Line-picking mode: dragging a finger highlights lines, releasing picks one. */
   picking: boolean;
   onPick: (index: number) => void;
-  onPickFile: () => void;
-  onCancelPick: () => void;
   /** Line kept highlighted while its comment is being written. */
   highlight: number | null;
+  /** Reveal hidden lines above the hunk header at `index`, or after the end of the diff. */
+  onExpand: (index: number | 'end', mode: ExpandMode) => void;
+  canExpandEnd: boolean;
 };
 
 const EDGE = 56; // px from the top/bottom edge where dragging auto-scrolls
 
-export function DiffView({ path, lines, notesFor, onDeleteNote, picking, onPick, onPickFile, onCancelPick, highlight }: Props) {
+export function DiffView({ path, lines, notesFor, onDeleteNote, picking, onPick, highlight, onExpand, canExpandEnd }: Props) {
   const scroller = useRef<HTMLDivElement>(null);
   const pointer = useRef<{ x: number; y: number } | null>(null);
   const hoverRef = useRef<number | null>(null);
   const frame = useRef(0);
   const [hover, setHover] = useState<number | null>(null);
-  const highlighted = useMemo(() => highlightDiff(lines, languageFor(path)), [lines, path]);
+  const rendered = useMemo(() => renderDiff(lines, languageFor(path)), [lines, path]);
 
   useEffect(() => {
     if (!picking) {
@@ -107,18 +108,13 @@ export function DiffView({ path, lines, notesFor, onDeleteNote, picking, onPick,
               <span>Przeciągnij palcem po liniach, puść na tej do komentarza</span>
             )}
           </div>
-          <div className="row">
-            <button className="link small" onClick={onPickFile}>
-              Cały plik
-            </button>
-            <button className="link small" onClick={onCancelPick}>
-              Anuluj
-            </button>
-          </div>
         </div>
       )}
       <div ref={scroller} className={`diff${picking ? ' picking' : ''}`} {...pickHandlers}>
-        {lines.map((l, i) => (
+        {lines.map((l, i) =>
+          l.type === 'hunk' ? (
+            <HunkHeader key={i} line={l} gap={hunkGap(lines, i)} onExpand={(mode) => onExpand(i, mode)} />
+          ) : (
           <Fragment key={i}>
             <div
               data-line={isCommentable(l) ? i : undefined}
@@ -126,9 +122,9 @@ export function DiffView({ path, lines, notesFor, onDeleteNote, picking, onPick,
             >
               <span className="ln">{l.oldLine ?? ''}</span>
               <span className="ln">{l.newLine ?? ''}</span>
-              {highlighted[i] ? (
-                // highlight.js escapes the source text, so this HTML only adds its own spans
-                <span className="code" dangerouslySetInnerHTML={{ __html: highlighted[i] }} />
+              {rendered[i] ? (
+                // Source text is escaped; the HTML only adds highlight.js and change-mark spans
+                <span className="code" dangerouslySetInnerHTML={{ __html: rendered[i]! }} />
               ) : (
                 <span className="code">{l.text || ' '}</span>
               )}
@@ -137,8 +133,35 @@ export function DiffView({ path, lines, notesFor, onDeleteNote, picking, onPick,
               <InlineNote key={n.id} note={n} onDelete={() => onDeleteNote(n)} />
             ))}
           </Fragment>
-        ))}
+          ),
+        )}
+        {canExpandEnd && (
+          <div className="expander">
+            <button onClick={() => onExpand('end', 'down')}>▼ Pokaż {EXPAND_STEP} linii niżej</button>
+          </div>
+        )}
       </div>
+    </div>
+  );
+}
+
+function HunkHeader({ line, gap, onExpand }: { line: DiffLine; gap: { from: number; to: number }; onExpand: (mode: ExpandMode) => void }) {
+  const hidden = gap.to - gap.from + 1;
+  // "@@ -10,9 +10,12 @@ public class Foo" -> "public class Foo"
+  const section = line.text.replace(/^@@[^@]*@@\s?/, '');
+  return (
+    <div className="expander">
+      {hidden > 0 &&
+        (hidden <= EXPAND_STEP ? (
+          <button onClick={() => onExpand('all')}>↕ {hidden}</button>
+        ) : (
+          <>
+            {gap.from > 1 && <button onClick={() => onExpand('down')}>▼ {EXPAND_STEP}</button>}
+            <button onClick={() => onExpand('up')}>▲ {EXPAND_STEP}</button>
+            <button onClick={() => onExpand('all')}>↕ {hidden}</button>
+          </>
+        ))}
+      <span className="hunk-section">{section}</span>
     </div>
   );
 }

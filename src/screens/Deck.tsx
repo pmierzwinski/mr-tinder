@@ -1,13 +1,14 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CommentSheet } from '../components/CommentSheet';
 import { DiffView, InlineNote } from '../components/DiffView';
 import { SwipeCard } from '../components/SwipeCard';
-import { diffStats, parseDiff, type DiffLine } from '../diff';
+import { diffStats, expandEnd, expandHunk, parseDiff, trailingGap, type DiffLine, type ExpandMode } from '../diff';
 import { ApiError, type DraftNote, type FileDiff, type GitLab, type MergeRequest, type Position } from '../gitlab';
 import { hashDiff, isViewed, setViewed } from '../storage';
 import { Summary } from './Summary';
 
-export type Card = { mr: MergeRequest; file: FileDiff; hash: string; lines: DiffLine[] };
+/** `fileLength` is known once the full file was fetched to expand context. */
+export type Card = { mr: MergeRequest; file: FileDiff; hash: string; lines: DiffLine[]; fileLength?: number };
 
 export const mrKey = (mr: Pick<MergeRequest, 'project_id' | 'iid'>) => `${mr.project_id}:${mr.iid}`;
 
@@ -46,6 +47,7 @@ export function Deck({ api, mrs, onExit }: Props) {
   const commenting = commentAt !== undefined;
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const fileCache = useRef(new Map<string, Promise<string[]>>());
 
   useEffect(() => {
     let cancelled = false;
@@ -170,6 +172,45 @@ export function Deck({ api, mrs, onExit }: Props) {
     }
   };
 
+  const expand = async (at: number | 'end', mode: ExpandMode) => {
+    const key = `${mrKey(mr)}:${file.new_path}`;
+    if (!fileCache.current.has(key)) fileCache.current.set(key, api.fileLines(mr, file.new_path));
+    let content: string[];
+    try {
+      content = await fileCache.current.get(key)!;
+    } catch (e) {
+      fileCache.current.delete(key);
+      setToast(`Nie udało się pobrać pliku: ${e instanceof Error ? e.message : e}`);
+      return;
+    }
+    const current = index;
+    setCards((cs) =>
+      cs!.map((c, i) =>
+        i !== current
+          ? c
+          : {
+              ...c,
+              fileLength: content.length,
+              lines: at === 'end' ? expandEnd(c.lines, content) : expandHunk(c.lines, at, content, mode),
+            },
+      ),
+    );
+  };
+
+  const canExpandEnd =
+    !file.new_file && !file.deleted_file && (card.fileLength === undefined || trailingGap(card.lines, card.fileLength) > 0);
+
+  const pickFile = () => {
+    setPicking(false);
+    setCommentAt(null);
+  };
+
+  // Cancelling a line comment goes back to choosing a line, not straight to browsing.
+  const cancelComment = () => {
+    if (commentAt !== null) setPicking(true);
+    setCommentAt(undefined);
+  };
+
   const fileNotes = fileDrafts.filter((d) => !d.position?.new_line && !d.position?.old_line);
 
   return (
@@ -198,6 +239,7 @@ export function Deck({ api, mrs, onExit }: Props) {
           rightLabel="VIEWED"
           leftLabel="KOMENTARZ"
           disabled={picking}
+          className={picking ? 'picking' : ''}
         >
           <div className="card-head">
             {mergeRequests.length > 1 && <div className="meta">{mr.references.full}</div>}
@@ -232,37 +274,41 @@ export function Deck({ api, mrs, onExit }: Props) {
                 setPicking(false);
                 setCommentAt(i);
               }}
-              onPickFile={() => {
-                setPicking(false);
-                setCommentAt(null);
-              }}
-              onCancelPick={() => setPicking(false)}
               highlight={commentAt ?? null}
+              onExpand={expand}
+              canExpandEnd={canExpandEnd}
             />
           )}
         </SwipeCard>
       </div>
 
-      <div className="actions">
-        <button className="round" onClick={undo} disabled={index === 0} title="Cofnij">
-          ↶
-        </button>
-        <button
-          className={`round comment${picking ? ' on' : ''}`}
-          onClick={() => (picking ? setPicking(false) : startComment())}
-          title="Komentarz (←)"
-        >
-          💬
-        </button>
-        <button className="round ok" onClick={next} title="Viewed (→)">
-          ✓
-        </button>
-      </div>
+      {picking ? (
+        <div className="actions pick-actions">
+          <button className="secondary big" onClick={() => setPicking(false)}>
+            ✕ Anuluj
+          </button>
+          <button className="secondary big" onClick={pickFile}>
+            Komentarz do pliku
+          </button>
+        </div>
+      ) : (
+        <div className="actions">
+          <button className="round" onClick={undo} disabled={index === 0} title="Cofnij">
+            ↶
+          </button>
+          <button className="round comment" onClick={startComment} title="Komentarz (←)">
+            💬
+          </button>
+          <button className="round ok" onClick={next} title="Viewed (→)">
+            ✓
+          </button>
+        </div>
+      )}
 
       {toast && <div className="toast">{toast}</div>}
 
       {commenting && (
-        <CommentSheet path={file.new_path} line={commentLine} onCancel={() => setCommentAt(undefined)} onSubmit={addComment} />
+        <CommentSheet path={file.new_path} line={commentLine} onCancel={cancelComment} onSubmit={addComment} />
       )}
     </div>
   );

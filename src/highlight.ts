@@ -1,7 +1,7 @@
 import hljs from 'highlight.js/lib/common';
 import glsl from 'highlight.js/lib/languages/glsl';
 import 'highlight.js/styles/github-dark.css';
-import type { DiffLine } from './diff';
+import { inlineChanges, type DiffLine, type Range } from './diff';
 
 hljs.registerLanguage('glsl', glsl);
 
@@ -54,32 +54,63 @@ function splitHtmlLines(html: string): string[] {
   return lines;
 }
 
+const escapeHtml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+/** Wraps the given character ranges of (already highlighted) HTML in <span class="chg">. */
+function markRanges(html: string, ranges: Range[]): string {
+  let out = '';
+  let pos = 0;
+  let r = 0;
+  let open = false;
+  // Tags, entities (one character each) or single characters.
+  for (const [token] of html.matchAll(/<[^>]+>|&[^;]+;|[^<&]/g)) {
+    if (token.startsWith('<')) {
+      // Close our mark around foreign tags so nesting stays valid.
+      if (open) out += '</span>';
+      open = false;
+      out += token;
+      continue;
+    }
+    while (r < ranges.length && ranges[r][1] <= pos) r++;
+    const mark = r < ranges.length && ranges[r][0] <= pos;
+    pos++;
+    if (mark !== open) out += mark ? '<span class="chg">' : '</span>';
+    open = mark;
+    out += token;
+  }
+  return open ? out + '</span>' : out;
+}
+
 /**
- * Highlights each hunk twice - once as the old file (context + removed lines) and once as the
- * new file (context + added lines) - so multi-line strings and comments color correctly.
- * Returns HTML per diff line, or null for lines that aren't code.
+ * HTML for every code line (null for hunk headers etc.): syntax colors plus marks on the words
+ * that changed within modified lines.
+ *
+ * Each hunk is highlighted twice - once as the old file (context + removed lines) and once as
+ * the new file (context + added lines) - so multi-line strings and comments color correctly.
  */
-export function highlightDiff(lines: DiffLine[], language: string | null): (string | null)[] {
-  const out: (string | null)[] = lines.map(() => null);
-  if (!language) return out;
+export function renderDiff(lines: DiffLine[], language: string | null): (string | null)[] {
+  const out: (string | null)[] = lines.map((l) => (l.type === 'hunk' || l.type === 'meta' ? null : escapeHtml(l.text)));
 
-  const hunks: number[][] = [];
-  lines.forEach((l, i) => {
-    if (l.type === 'hunk' || !hunks.length) hunks.push([]);
-    if (l.type !== 'hunk' && l.type !== 'meta') hunks[hunks.length - 1].push(i);
-  });
-
-  for (const hunk of hunks) {
-    for (const side of ['del', 'add'] as const) {
-      const indices = hunk.filter((i) => lines[i].type === side || lines[i].type === 'ctx');
-      if (!indices.length) continue;
-      const code = indices.map((i) => lines[i].text).join('\n');
-      const html = splitHtmlLines(hljs.highlight(code, { language, ignoreIllegals: true }).value);
-      indices.forEach((lineIndex, k) => {
-        // Context lines take the new-file rendering (the 'add' pass runs second).
-        out[lineIndex] = html[k];
-      });
+  if (language) {
+    const hunks: number[][] = [];
+    lines.forEach((l, i) => {
+      if (l.type === 'hunk' || !hunks.length) hunks.push([]);
+      if (l.type !== 'hunk' && l.type !== 'meta') hunks[hunks.length - 1].push(i);
+    });
+    for (const hunk of hunks) {
+      for (const side of ['del', 'add'] as const) {
+        const indices = hunk.filter((i) => lines[i].type === side || lines[i].type === 'ctx');
+        if (!indices.length) continue;
+        const code = indices.map((i) => lines[i].text).join('\n');
+        const html = splitHtmlLines(hljs.highlight(code, { language, ignoreIllegals: true }).value);
+        // Context lines end up with the new-file rendering (the 'add' pass runs second).
+        indices.forEach((lineIndex, k) => (out[lineIndex] = html[k]));
+      }
     }
   }
+
+  inlineChanges(lines).forEach((ranges, i) => {
+    if (ranges?.length && out[i] !== null) out[i] = markRanges(out[i]!, ranges);
+  });
   return out;
 }

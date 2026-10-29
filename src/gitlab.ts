@@ -153,6 +153,20 @@ export class GitLab {
     }
   }
 
+  /** File content at the MR's head commit, as lines. */
+  async fileLines(mr: MergeRequest, path: string): Promise<string[]> {
+    const ref = mr.diff_refs?.head_sha ?? mr.sha;
+    const res = await fetch(
+      `${this.baseUrl}/api/v4/projects/${mr.project_id}/repository/files/${encodeURIComponent(path)}/raw?ref=${ref}`,
+      { headers: { 'PRIVATE-TOKEN': this.token } },
+    );
+    if (!res.ok) throw new ApiError(res.status, `${res.status}: ${res.statusText}`);
+    const text = await res.text();
+    const lines = text.split('\n').map((l) => l.replace(/\r$/, ''));
+    if (text.endsWith('\n')) lines.pop();
+    return lines;
+  }
+
   draftNotes(mr: MergeRequest) {
     return this.getAll<DraftNote>(`${this.mrPath(mr)}/draft_notes`);
   }

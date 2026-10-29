@@ -9,6 +9,7 @@ type Props = {
   rightLabel: string;
   leftLabel: string;
   disabled?: boolean;
+  className?: string;
   children: ReactNode;
 };
 
@@ -16,7 +17,7 @@ type Drag = { id: number; x: number; y: number; axis: 'h' | 'v' | null };
 
 // Horizontal drag swipes the card; vertical movement is left to the browser (touch-action: pan-y)
 // so the diff inside stays scrollable.
-export function SwipeCard({ onSwipeRight, onSwipeLeft, rightLabel, leftLabel, disabled, children }: Props) {
+export function SwipeCard({ onSwipeRight, onSwipeLeft, rightLabel, leftLabel, disabled, className, children }: Props) {
   const [dx, setDx] = useState(0);
   const [animating, setAnimating] = useState(false);
   const drag = useRef<Drag | null>(null);
@@ -30,16 +31,17 @@ export function SwipeCard({ onSwipeRight, onSwipeLeft, rightLabel, leftLabel, di
 
   return (
     <div
-      className="swipe-card"
+      className={`swipe-card ${className ?? ''}`}
       style={{
         transform: `translateX(${dx}px) rotate(${dx / 25}deg)`,
         transition: animating ? 'transform 0.22s ease-out' : 'none',
       }}
       onTransitionEnd={() => setAnimating(false)}
       onPointerDown={(e) => {
+        // Reset before the disabled check, or clicks stay swallowed after the swipe that disabled the card.
+        moved.current = false;
         if (disabled || (e.pointerType === 'mouse' && e.button !== 0)) return;
         drag.current = { id: e.pointerId, x: e.clientX, y: e.clientY, axis: null };
-        moved.current = false;
       }}
       onPointerMove={(e) => {
         const d = drag.current;
