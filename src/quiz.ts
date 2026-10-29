@@ -40,8 +40,25 @@ function describeChanges(changes: { mr: MergeRequest; files: FileDiff[] }[]) {
     .join('\n\n');
 }
 
-export async function generateQuiz(apiKey: string, changes: { mr: MergeRequest; files: FileDiff[] }[]): Promise<QuizQuestion[]> {
-  // The key is the user's own and never leaves their browser except to the Anthropic API.
+export type AiProvider = 'anthropic' | 'gemini';
+
+/** Google AI Studio keys start with "AIza"; everything else is treated as an Anthropic key. */
+export const providerForKey = (key: string): AiProvider => (key.startsWith('AIza') ? 'gemini' : 'anthropic');
+
+type Changes = { mr: MergeRequest; files: FileDiff[] }[];
+
+function usableQuestions(questions: QuizQuestion[] | undefined) {
+  const valid = questions?.filter((q) => q.options.length >= 2 && q.correct_index >= 0 && q.correct_index < q.options.length);
+  if (!valid?.length) throw new Error('Nie udało się odczytać quizu z odpowiedzi modelu.');
+  return valid;
+}
+
+export function generateQuiz(apiKey: string, changes: Changes): Promise<QuizQuestion[]> {
+  // The key is the user's own and never leaves their browser except to the chosen AI provider.
+  return providerForKey(apiKey) === 'gemini' ? generateWithGemini(apiKey, changes) : generateWithClaude(apiKey, changes);
+}
+
+async function generateWithClaude(apiKey: string, changes: Changes) {
   const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
   const response = await client.beta.messages.parse({
     model: 'claude-opus-5-5',
@@ -55,9 +72,60 @@ export async function generateQuiz(apiKey: string, changes: { mr: MergeRequest; 
 
   if (response.stop_reason === 'refusal') throw new Error('Model odmówił ułożenia quizu dla tych zmian.');
   if (response.stop_reason === 'max_tokens') throw new Error('Odpowiedź modelu została ucięta, spróbuj ponownie.');
-  const questions = response.parsed_output?.questions.filter(
-    (q) => q.options.length >= 2 && q.correct_index >= 0 && q.correct_index < q.options.length,
-  );
-  if (!questions?.length) throw new Error('Nie udało się odczytać quizu z odpowiedzi modelu.');
-  return questions;
+  return usableQuestions(response.parsed_output?.questions);
+}
+
+const GEMINI_MODEL = 'gemini-3.8-flash';
+
+// Gemini's responseSchema uses its own OpenAPI-style subset, so it's written out instead of derived from zod.
+const GEMINI_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    questions: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          question: { type: 'STRING' },
+          options: { type: 'ARRAY', items: { type: 'STRING' } },
+          correct_index: { type: 'INTEGER' },
+          explanation: { type: 'STRING' },
+        },
+        required: ['question', 'options', 'correct_index', 'explanation'],
+      },
+    },
+  },
+  required: ['questions'],
+};
+
+type GeminiResponse = {
+  candidates?: { content?: { parts?: { text?: string }[] }; finishReason?: string }[];
+  promptFeedback?: { blockReason?: string };
+  error?: { message?: string };
+};
+
+async function generateWithGemini(apiKey: string, changes: Changes) {
+  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+    body: JSON.stringify({
+      systemInstruction: { parts: [{ text: SYSTEM }] },
+      contents: [{ role: 'user', parts: [{ text: describeChanges(changes) }] }],
+      generationConfig: { responseMimeType: 'application/json', responseSchema: GEMINI_SCHEMA },
+    }),
+  });
+  const data = (await res.json().catch(() => ({}))) as GeminiResponse;
+  if (!res.ok) throw new Error(`Gemini: ${data.error?.message ?? `HTTP ${res.status}`}`);
+  if (data.promptFeedback?.blockReason) throw new Error(`Gemini zablokował zapytanie (${data.promptFeedback.blockReason}).`);
+
+  const candidate = data.candidates?.[0];
+  if (candidate?.finishReason === 'MAX_TOKENS') throw new Error('Odpowiedź modelu została ucięta, spróbuj ponownie.');
+  const text = candidate?.content?.parts?.map((p) => p.text ?? '').join('') ?? '';
+  let json: unknown;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    throw new Error('Gemini zwrócił odpowiedź, która nie jest poprawnym JSON-em.');
+  }
+  return usableQuestions(QuizSchema.safeParse(json).data?.questions);
 }

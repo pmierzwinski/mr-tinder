@@ -10,6 +10,7 @@ type Props = {
   cards: Card[];
   drafts: Record<string, DraftNote[]>;
   setDrafts: Dispatch<SetStateAction<Record<string, DraftNote[]>>>;
+  exitLabel: string;
   onExit: () => void;
   onRestart: () => void;
 };
@@ -24,7 +25,7 @@ const DONE: Record<Outcome, string> = {
   request_changes: 'Poproszono o zmiany ✗',
 };
 
-export function Summary({ api, mrs, cards, drafts, setDrafts, onExit, onRestart }: Props) {
+export function Summary({ api, mrs, cards, drafts, setDrafts, exitLabel, onExit, onRestart }: Props) {
   const [summaries, setSummaries] = useState<Record<string, string>>({});
   const [status, setStatus] = useState<Record<string, Status>>({});
   const [aiKey] = useState(loadAiKey);
@@ -82,7 +83,7 @@ export function Summary({ api, mrs, cards, drafts, setDrafts, onExit, onRestart 
           🧠 Sprawdź się — quiz z tych zmian (5 pytań)
         </button>
       ) : (
-        <div className="meta">Dodaj klucz API Anthropic w ustawieniach (⚙︎ na liście MR), żeby po review wygenerować quiz ze zmian.</div>
+        <div className="meta">Dodaj klucz API (Gemini albo Anthropic) w ustawieniach (⚙︎ na liście MR), żeby po review wygenerować quiz ze zmian.</div>
       )}
       {mrs.map((mr) => {
         const key = mrKey(mr);
@@ -150,7 +151,7 @@ export function Summary({ api, mrs, cards, drafts, setDrafts, onExit, onRestart 
           ↺ Jeszcze raz
         </button>
         <button className="secondary big" onClick={onExit}>
-          ☰ Lista MR
+          ☰ {exitLabel}
         </button>
       </div>
     </div>

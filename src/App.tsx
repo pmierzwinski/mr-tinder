@@ -8,7 +8,7 @@ import { addRecent, clearSession, loadSession, saveSession, type Session } from 
 
 export function App() {
   const [session, setSession] = useState<Session | null>(loadSession);
-  const [deck, setDeck] = useState<MergeRequest[] | null>(null);
+  const [deck, setDeck] = useState<{ mrs: MergeRequest[]; taskKey?: string } | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const api = useMemo(() => (session ? new GitLab(session.baseUrl, session.token) : null), [session]);
 
@@ -33,7 +33,14 @@ export function App() {
   }
 
   if (deck) {
-    return <Deck api={api} mrs={deck} onExit={() => history.back()} />;
+    return (
+      <Deck
+        api={api}
+        mrs={deck.mrs}
+        exitLabel={deck.taskKey ? `Wróć do ${deck.taskKey}` : 'Lista MR'}
+        onExit={() => history.back()}
+      />
+    );
   }
 
   if (settingsOpen) {
@@ -65,9 +72,9 @@ export function App() {
       <Inbox
         api={api}
         username={session.user.username}
-        onOpen={(mrs) => {
+        onOpen={(mrs, taskKey) => {
           addRecent(mrs);
-          setDeck(mrs);
+          setDeck({ mrs, taskKey });
         }}
       />
     </>

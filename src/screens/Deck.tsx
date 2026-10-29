@@ -12,7 +12,7 @@ export type Card = { mr: MergeRequest; file: FileDiff; hash: string; lines: Diff
 
 export const mrKey = (mr: Pick<MergeRequest, 'project_id' | 'iid'>) => `${mr.project_id}:${mr.iid}`;
 
-type Props = { api: GitLab; mrs: MergeRequest[]; onExit: () => void };
+type Props = { api: GitLab; mrs: MergeRequest[]; exitLabel: string; onExit: () => void };
 
 function buildPosition(mr: MergeRequest, file: FileDiff, line: DiffLine | null): Position {
   const base = { ...mr.diff_refs!, old_path: file.old_path, new_path: file.new_path };
@@ -36,7 +36,7 @@ function isOnLine(d: DraftNote, l: DiffLine) {
   return l.newLine !== undefined && d.position?.new_line === l.newLine;
 }
 
-export function Deck({ api, mrs, onExit }: Props) {
+export function Deck({ api, mrs, exitLabel, onExit }: Props) {
   const [mergeRequests, setMergeRequests] = useState<MergeRequest[]>([]);
   const [cards, setCards] = useState<Card[] | null>(null);
   const [drafts, setDrafts] = useState<Record<string, DraftNote[]>>({});
@@ -138,6 +138,7 @@ export function Deck({ api, mrs, onExit }: Props) {
         cards={cards}
         drafts={drafts}
         setDrafts={setDrafts}
+        exitLabel={exitLabel}
         onExit={onExit}
         onRestart={() => setIndex(0)}
       />

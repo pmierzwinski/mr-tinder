@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { GitLab } from '../gitlab';
+import { providerForKey } from '../quiz';
 import { loadAiKey, normalizeUrl, saveAiKey, saveCredentials, type Session } from '../storage';
 
 type Props = {
@@ -81,22 +82,37 @@ export function Settings({ session, onSessionChange, onLogout, onClose }: Props)
       <section className="settings-section">
         <h3>AI (quiz po review)</h3>
         <label>
-          Klucz API Anthropic
+          Klucz API — Gemini (darmowy) albo Anthropic
           <input
             value={aiKey}
             onChange={(e) => setAiKey(e.target.value)}
             type="password"
             autoComplete="off"
-            placeholder="sk-ant-…"
+            placeholder="AIza… albo sk-ant-…"
           />
         </label>
+        {aiKey.trim() && (
+          <div className="meta">
+            Rozpoznany dostawca: <b>{providerForKey(aiKey.trim()) === 'gemini' ? 'Google Gemini' : 'Anthropic Claude'}</b>
+          </div>
+        )}
         <div className="meta">
-          Po review możesz wygenerować quiz z 5 pytań o zmiany. Klucz utworzysz w{' '}
+          Po review możesz wygenerować quiz z 5 pytań o zmiany. Klucz Gemini utworzysz w{' '}
+          <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">
+            Google AI Studio
+          </a>
+          , klucz Anthropic w{' '}
           <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer">
             konsoli Anthropic
           </a>
-          ; zostaje tylko na tym urządzeniu, a diffy trafiają do API Anthropic tylko przy generowaniu quizu.
+          . Klucz zostaje tylko na tym urządzeniu, a diffy trafiają do dostawcy tylko przy generowaniu quizu.
         </div>
+        {providerForKey(aiKey.trim()) === 'gemini' && aiKey.trim() && (
+          <div className="warning">
+            Uwaga: w darmowym planie Gemini Google może wykorzystywać przesłane treści (tu: diffy kodu) do ulepszania
+            swoich produktów, a mogą je czytać ludzie. Upewnij się, że to zgodne z zasadami firmy.
+          </div>
+        )}
       </section>
 
       {error && <div className="error">{error}</div>}

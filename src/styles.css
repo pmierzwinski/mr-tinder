@@ -906,3 +906,10 @@ button.big {
 .quiz-verdict {
   text-align: center;
 }
+.warning {
+  color: #ffd27a;
+  background: rgba(240, 166, 58, 0.12);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+}

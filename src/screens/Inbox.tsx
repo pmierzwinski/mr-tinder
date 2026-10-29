@@ -3,7 +3,8 @@ import type { GitLab, MergeRequest, Project, User } from '../gitlab';
 import { loadRecent } from '../storage';
 import { loadTaskGroups, type TaskGroup } from '../tasks';
 
-type Props = { api: GitLab; username: string; onOpen: (mrs: MergeRequest[]) => void };
+/** `taskKey` is set when the MRs were opened from a task, so the review can lead back to it. */
+type Props = { api: GitLab; username: string; onOpen: (mrs: MergeRequest[], taskKey?: string) => void };
 
 type Tab = 'review' | 'tasks' | 'recent' | 'repos';
 
@@ -18,6 +19,8 @@ const MERGED_DAYS = 7;
 
 // Survives the Inbox unmounting while a deck is open, so coming back lands on the same tab.
 let lastTab: Tab = 'review';
+// Likewise for the expanded task, so finishing a review returns to that task's MR list.
+let lastOpenTask: string | null = null;
 
 type MrStatus = {
   me: string;
@@ -155,7 +158,11 @@ function ReviewList({ api, username, onOpen }: Props) {
 
 function TaskList({ api, username, onOpen }: Props) {
   const [groups, setGroups] = useState<TaskGroup[] | null>(null);
-  const [open, setOpen] = useState<string | null>(null);
+  const [open, setOpenState] = useState<string | null>(lastOpenTask);
+  const setOpen = (key: string | null) => {
+    lastOpenTask = key;
+    setOpenState(key);
+  };
   const [showDone, setShowDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const allMrs = useMemo(() => groups?.flatMap((g) => g.mrs) ?? null, [groups]);
@@ -187,15 +194,16 @@ function TaskList({ api, username, onOpen }: Props) {
           onClick={(e) => {
             e.stopPropagation();
             // Merged MRs can't be reviewed any more, unless nothing else is left.
-            const open = g.mrs.filter((mr) => mr.state !== 'merged');
-            onOpen(open.length ? open : g.mrs);
+            const pending = g.mrs.filter((mr) => mr.state !== 'merged');
+            setOpen(g.key);
+            onOpen(pending.length ? pending : g.mrs, g.key);
           }}
         >
           Review całości
         </button>
       </div>
       {open === g.key &&
-        g.mrs.map((mr) => <MrRow key={mr.id} mr={mr} status={statuses.get(mr.id)} onClick={() => onOpen([mr])} />)}
+        g.mrs.map((mr) => <MrRow key={mr.id} mr={mr} status={statuses.get(mr.id)} onClick={() => onOpen([mr], g.key)} />)}
     </div>
   );
 
