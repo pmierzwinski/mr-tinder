@@ -868,79 +868,6 @@ button.big {
   font-size: 20px;
 }
 
-/* quiz */
-.quiz-start {
-  background: linear-gradient(135deg, rgba(180, 156, 255, 0.22), rgba(255, 77, 109, 0.18));
-  border: 1px solid rgba(180, 156, 255, 0.5);
-  color: var(--text);
-  border-radius: 14px;
-  padding: 14px;
-  font-weight: 600;
-  text-align: left;
-}
-.quiz {
-  background: var(--surface);
-  border: 1px solid rgba(180, 156, 255, 0.5);
-  border-radius: 14px;
-  padding: 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.quiz .loading {
-  padding: 16px 0;
-}
-.quiz-question {
-  font-weight: 700;
-  font-size: 16px;
-}
-.quiz-options {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.quiz-option {
-  text-align: left;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 12px;
-  font-size: 14px;
-}
-.quiz-option:disabled {
-  opacity: 1;
-}
-.quiz-option.correct {
-  border-color: var(--ok);
-  background: rgba(34, 211, 160, 0.14);
-}
-.quiz-option.wrong {
-  border-color: var(--danger);
-  background: rgba(255, 107, 107, 0.14);
-}
-.quiz-explanation {
-  color: var(--muted);
-  font-size: 14px;
-}
-.quiz-result {
-  font-size: 40px;
-  font-weight: 800;
-  text-align: center;
-  background: var(--gradient);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
-.quiz-verdict {
-  text-align: center;
-}
-.warning {
-  color: #ffd27a;
-  background: rgba(240, 166, 58, 0.12);
-  border-radius: 8px;
-  padding: 8px 12px;
-  font-size: 13px;
-}
 .kind-chip {
   font-size: 10px;
   font-weight: 800;
@@ -959,11 +886,6 @@ button.big {
 .settings .logout {
   align-self: flex-start;
   color: var(--muted);
-}
-button.primary.saved {
-  background: var(--ok);
-  color: #04261b;
-  box-shadow: none;
 }
 .provider-chip {
   font-size: 10px;
@@ -998,96 +920,6 @@ button.primary.saved {
   align-items: center;
 }
 
-/* ---- Flow order: label on the card and the map sheet ---- */
-.flow-from {
-  background: none;
-  padding: 0;
-  text-align: left;
-  font-size: 11px;
-  color: var(--muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.sheet.flow-map {
-  max-height: 85dvh;
-}
-.flow-map-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-.segmented {
-  display: flex;
-  background: var(--surface-2);
-  border-radius: 9px;
-  padding: 3px;
-}
-.segmented button {
-  background: none;
-  padding: 4px 10px;
-  font-size: 12px;
-  border-radius: 7px;
-  color: var(--muted);
-}
-.segmented button.on {
-  background: var(--surface);
-  color: var(--text);
-  font-weight: 600;
-}
-.flow-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.flow-row {
-  width: 100%;
-  background: none;
-  border-radius: 8px;
-  padding: 6px 8px;
-  text-align: left;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.flow-row.current {
-  background: var(--surface-2);
-  box-shadow: inset 2px 0 0 var(--accent);
-}
-.flow-row-main {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  min-width: 0;
-}
-.flow-check {
-  font-size: 11px;
-  color: var(--muted);
-  min-width: 14px;
-}
-.flow-row.viewed .flow-check {
-  color: var(--ok);
-}
-.flow-row.viewed .flow-name {
-  color: var(--muted);
-}
-.flow-name {
-  font-family: var(--mono);
-  font-size: 13px;
-  font-weight: 600;
-  overflow-wrap: anywhere;
-}
-.flow-sub {
-  font-size: 11px;
-  color: var(--muted);
-  padding-left: 20px;
-  overflow-wrap: anywhere;
-}
 .next-review {
   display: flex;
   flex-direction: column;

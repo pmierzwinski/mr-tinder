@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CommentSheet } from '../components/CommentSheet';
-import { FlowMap, flowLabel } from '../components/FlowMap';
 import { DiffView, InlineNote } from '../components/DiffView';
 import { SwipeCard } from '../components/SwipeCard';
 import { diffStats, expandEnd, expandHunk, parseDiff, trailingGap, type DiffLine, type ExpandMode } from '../diff';
@@ -15,35 +14,11 @@ import {
   type Providers,
   type Review,
 } from '../review';
-import { fileKey, flowOrder, generateFlow, type AiStep, type FlowInfo } from '../flow';
-import {
-  hashDiff,
-  isViewed,
-  loadAiFlow,
-  loadAiKey,
-  loadCardOrder,
-  loadSmallCode,
-  saveAiFlow,
-  saveCardOrder,
-  saveSmallCode,
-  setViewed,
-  type CardOrder,
-} from '../storage';
+import { hashDiff, isViewed, loadSmallCode, saveSmallCode, setViewed } from '../storage';
 import { Summary } from './Summary';
 
-/**
- * `fileLength` is known once the full file was fetched to expand context.
- * `apiIndex` is the position in GitLab's/GitHub's file list; `flow` says why the card sits where it does.
- */
-export type Card = {
-  review: Review;
-  file: FileDiff;
-  hash: string;
-  lines: DiffLine[];
-  fileLength?: number;
-  apiIndex: number;
-  flow?: FlowInfo;
-};
+/** `fileLength` is known once the full file was fetched to expand context. */
+export type Card = { review: Review; file: FileDiff; hash: string; lines: DiffLine[]; fileLength?: number };
 
 /** The task's next review to offer once this one is sent. */
 export type NextReview = { review: Review; taskKey: string; open: () => void };
@@ -57,21 +32,6 @@ const firstUnviewed = (cards: Card[]) => {
   return i === -1 ? cards.length : i;
 };
 
-/** Sorts cards in the chosen order: the API's, the local call-flow guess, or Gemini's when there is one. */
-function arrange(cards: Card[], order: CardOrder, ai: AiStep[] | null): Card[] {
-  const byApi = [...cards].sort((a, b) => a.apiIndex - b.apiIndex).map((c) => ({ ...c, flow: undefined }));
-  if (order === 'files') return byApi;
-  const flow = flowOrder(byApi.map((c) => ({ key: fileKey(c.review.id, c.file.new_path), path: c.file.new_path, lines: c.lines }))).map(
-    ({ index, flow }) => ({ ...byApi[index], flow }),
-  );
-  if (!ai) return flow;
-  // Files the model left out keep their place in the local order, after the ones it did order.
-  const steps = new Map(ai.map((s, i) => [s.key, { i, note: s.note }]));
-  const at = (c: Card) => steps.get(fileKey(c.review.id, c.file.new_path));
-  return flow
-    .map((c) => ({ ...c, flow: { depth: 0, note: at(c)?.note } }))
-    .sort((a, b) => (at(a)?.i ?? Infinity) - (at(b)?.i ?? Infinity));
-}
 
 export function Deck({ providers, reviews: requested, exitLabel, onExit, next: nextReview }: Props) {
   const [reviews, setReviews] = useState<Review[]>([]);
@@ -92,9 +52,6 @@ export function Deck({ providers, reviews: requested, exitLabel, onExit, next: n
   const [toast, setToast] = useState<string | null>(null);
   const fileCache = useRef(new Map<string, Promise<string[]>>());
   const [smallCode, setSmallCode] = useState(loadSmallCode);
-  const [order, setOrder] = useState(loadCardOrder);
-  const [aiFlow, setAiFlow] = useState<AiStep[] | null>(null);
-  const [mapOpen, setMapOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -108,14 +65,10 @@ export function Deck({ providers, reviews: requested, exitLabel, onExit, next: n
         }),
       );
       if (cancelled) return;
-      const fetched: Card[] = loaded
-        .flatMap(({ review, files }) => files.map((file) => ({ review, file })))
-        .map(({ review, file }, apiIndex) => ({ review, file, hash: hashDiff(file.diff), lines: parseDiff(file.diff), apiIndex }));
-      const reviewsNow = loaded.map((l) => l.review);
-      const ai = loadAiFlow(reviewsNow);
-      const all = arrange(fetched, loadCardOrder(), ai);
-      setReviews(reviewsNow);
-      setAiFlow(ai);
+      const all: Card[] = loaded.flatMap(({ review, files }) =>
+        files.map((file) => ({ review, file, hash: hashDiff(file.diff), lines: parseDiff(file.diff) })),
+      );
+      setReviews(loaded.map((l) => l.review));
       setDrafts(Object.fromEntries(loaded.map((l) => [l.review.id, l.notes])));
       setCards(all);
       setIndex(firstUnviewed(all));
@@ -165,38 +118,6 @@ export function Deck({ providers, reviews: requested, exitLabel, onExit, next: n
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [card, commenting, picking, next, startComment, setPicking]);
-
-  // Reordering continues from the first file not yet viewed in the new order.
-  const rearrange = (nextOrder: CardOrder, ai: AiStep[] | null) => {
-    if (!cards) return;
-    const arranged = arrange(cards, nextOrder, ai);
-    setCards(arranged);
-    setIndex(firstUnviewed(arranged));
-    setPicking(false);
-  };
-
-  const changeOrder = (next: CardOrder) => {
-    saveCardOrder(next);
-    setOrder(next);
-    rearrange(next, aiFlow);
-  };
-
-  const orderWithAi = async () => {
-    const changes = reviews.map((review) => ({
-      review,
-      files: (cards ?? []).filter((c) => c.review.id === review.id).sort((a, b) => a.apiIndex - b.apiIndex).map((c) => c.file),
-    }));
-    const steps = await generateFlow(loadAiKey(), changes);
-    saveAiFlow(reviews, steps);
-    setAiFlow(steps);
-    rearrange(order, steps);
-  };
-
-  const clearAi = () => {
-    saveAiFlow(reviews, null);
-    setAiFlow(null);
-    rearrange(order, null);
-  };
 
   const fileDrafts = useMemo(() => (card ? draftsForFile(drafts[card.review.id] ?? [], card.file) : []), [card, drafts]);
 
@@ -310,9 +231,6 @@ export function Deck({ providers, reviews: requested, exitLabel, onExit, next: n
           done={index}
           count={cards.length}
         />
-        <button className="font-toggle" onClick={() => setMapOpen(true)} title="Mapa przepływu">
-          🗺
-        </button>
         <button
           className={`font-toggle${smallCode ? ' on' : ''}`}
           onClick={() => {
@@ -346,11 +264,6 @@ export function Deck({ providers, reviews: requested, exitLabel, onExit, next: n
                 (<span className="minus">−{removed}</span> <span className="plus">+{added}</span>)
               </span>
             </div>
-            {flowLabel(card.flow) && (
-              <button className="flow-from" onClick={() => setMapOpen(true)}>
-                {flowLabel(card.flow)}
-              </button>
-            )}
             {(file.new_file || file.deleted_file || fileDrafts.length > 0) && (
               <div className="meta">
                 {file.new_file && <span className="badge add">nowy</span>}
@@ -419,25 +332,6 @@ export function Deck({ providers, reviews: requested, exitLabel, onExit, next: n
       )}
 
       {toast && <div className="toast">{toast}</div>}
-
-      {mapOpen && (
-        <FlowMap
-          cards={cards}
-          index={index}
-          order={order}
-          aiOrdered={!!aiFlow}
-          canUseAi={!!loadAiKey()}
-          onJump={(i) => {
-            setPicking(false);
-            setIndex(i);
-            setMapOpen(false);
-          }}
-          onOrder={changeOrder}
-          onAi={orderWithAi}
-          onClearAi={clearAi}
-          onClose={() => setMapOpen(false)}
-        />
-      )}
 
       {commenting && (
         <CommentSheet path={file.new_path} line={commentLine} onCancel={cancelComment} onSubmit={addComment} />

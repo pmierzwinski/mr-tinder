@@ -1,7 +1,6 @@
-import { useMemo, useState, type Dispatch, type SetStateAction } from 'react';
-import { QuizView } from '../components/QuizView';
+import { useState, type Dispatch, type SetStateAction } from 'react';
 import { providerFor, type Draft, type Providers, type Review } from '../review';
-import { isViewed, loadAiKey } from '../storage';
+import { isViewed } from '../storage';
 import type { Card, NextReview } from './Deck';
 
 type Props = {
@@ -28,12 +27,6 @@ const DONE: Record<Outcome, string> = {
 export function Summary({ providers, reviews, cards, drafts, setDrafts, exitLabel, onExit, next, onRestart }: Props) {
   const [summaries, setSummaries] = useState<Record<string, string>>({});
   const [status, setStatus] = useState<Record<string, Status>>({});
-  const [aiKey] = useState(loadAiKey);
-  const [quizOpen, setQuizOpen] = useState(false);
-  const quizChanges = useMemo(
-    () => reviews.map((review) => ({ review, files: cards.filter((c) => c.review.id === review.id).map((c) => c.file) })),
-    [reviews, cards],
-  );
 
   const update = (review: Review, s: Status) => setStatus((prev) => ({ ...prev, [review.id]: s }));
 
@@ -67,15 +60,6 @@ export function Summary({ providers, reviews, cards, drafts, setDrafts, exitLabe
   return (
     <div className="screen summary">
       <h2 className="summary-title">Podsumowanie</h2>
-      {quizOpen ? (
-        <QuizView apiKey={aiKey} changes={quizChanges} onClose={() => setQuizOpen(false)} />
-      ) : aiKey ? (
-        <button className="quiz-start" onClick={() => setQuizOpen(true)}>
-          🧠 Sprawdź się — quiz z tych zmian (5 pytań)
-        </button>
-      ) : (
-        <div className="meta">Dodaj klucz API Gemini w ustawieniach (⚙︎ na liście MR), żeby po review wygenerować quiz ze zmian.</div>
-      )}
       {reviews.map((review) => {
         const key = review.id;
         const files = cards.filter((c) => c.review.id === key);
