@@ -72,31 +72,22 @@ export function Settings({ accounts, onAccountsChange, onClose }: Props) {
       })}
 
       <section className="settings-section">
-        <h3>AI: quiz i kolejność plików (Claude)</h3>
+        <h3>AI: quiz i kolejność plików (Gemini)</h3>
         <label>
-          Klucz API Claude (Anthropic)
-          <input
-            value={aiKey}
-            onChange={(e) => setAiKey(e.target.value)}
-            type="password"
-            autoComplete="off"
-            placeholder="sk-ant-…"
-          />
+          Klucz API Gemini
+          <input value={aiKey} onChange={(e) => setAiKey(e.target.value)} type="password" autoComplete="off" />
         </label>
-        {aiKey.trim() && !aiKey.trim().startsWith('sk-ant-') && (
-          <div className="error">To nie wygląda na klucz Anthropic — powinien zaczynać się od „sk-ant-”.</div>
-        )}
         <p className="hint small">
           Z kluczem możesz po review wygenerować quiz z 5 pytań o zmiany, a w talii (🗺 → „Ułóż z AI”) poprosić o kolejność
-          plików wzdłuż przepływu kodu. Klucz utworzysz w{' '}
-          <a href="https://platform.claude.com/settings/keys" target="_blank" rel="noreferrer">
-            Claude Console
+          plików wzdłuż przepływu kodu. Darmowy klucz utworzysz w{' '}
+          <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">
+            Google AI Studio
           </a>
-          . Zostaje tylko na tym urządzeniu, a diffy trafiają do Anthropic tylko wtedy, gdy sam o to poprosisz.
+          . Klucz zostaje tylko na tym urządzeniu, a diffy trafiają do Google tylko wtedy, gdy sam o to poprosisz.
         </p>
         <div className="warning">
-          API Claude jest płatne (rozliczane od zużycia na koncie w Console). Wysyłając diffy, przekazujesz kod firmie
-          Anthropic — upewnij się, że to zgodne z zasadami firmy.
+          W darmowym planie Gemini Google może wykorzystywać przesłane treści (tu: diffy kodu) do ulepszania swoich
+          produktów, a mogą je czytać ludzie. Upewnij się, że to zgodne z zasadami firmy.
         </div>
         <button
           className={`primary small${saved ? ' saved' : ''}`}

@@ -1,5 +1,4 @@
-import { z } from 'zod';
-import { askClaude, describeChanges, type Changes } from './claude';
+import { askGemini, describeChanges, type Changes } from './gemini';
 
 export type { Changes };
 
@@ -17,22 +16,32 @@ Zasady:
 - explanation: 1-2 zdania, dlaczego odpowiedź jest poprawna, z odwołaniem do konkretnego miejsca w kodzie.
 - Pisz po polsku, nazwy z kodu zostaw w oryginale.`;
 
-const QuizSchema = z.object({
-  questions: z.array(
-    z.object({
-      question: z.string(),
-      options: z.array(z.string()),
-      correct_index: z.number().int(),
-      explanation: z.string(),
-    }),
-  ),
-});
+// Gemini's responseSchema format (an OpenAPI subset); the answer is still validated below.
+const GEMINI_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    questions: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          question: { type: 'STRING' },
+          options: { type: 'ARRAY', items: { type: 'STRING' } },
+          correct_index: { type: 'INTEGER' },
+          explanation: { type: 'STRING' },
+        },
+        required: ['question', 'options', 'correct_index', 'explanation'],
+      },
+    },
+  },
+  required: ['questions'],
+};
 
-/** Generates the quiz with Claude; the key is the user's own and is sent only to Anthropic's API. */
+/** Generates the quiz with Gemini; the key is the user's own and is sent only to Google's API. */
 export async function generateQuiz(apiKey: string, changes: Changes): Promise<QuizQuestion[]> {
-  const { questions } = await askClaude(apiKey, SYSTEM, describeChanges(changes), QuizSchema);
-  // The schema can't express "index within options", so that is checked here.
-  const valid = questions.filter(isQuestion);
+  const json = await askGemini(apiKey, SYSTEM, describeChanges(changes), GEMINI_SCHEMA);
+  const questions = (json as { questions?: unknown } | null)?.questions;
+  const valid = (Array.isArray(questions) ? questions : []).filter(isQuestion);
   if (!valid.length) throw new Error('Nie udało się odczytać quizu z odpowiedzi modelu.');
   return valid;
 }

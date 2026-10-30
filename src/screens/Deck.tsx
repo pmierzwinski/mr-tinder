@@ -15,7 +15,7 @@ import {
   type Providers,
   type Review,
 } from '../review';
-import { fileKey, flowOrder, type AiStep, type FlowInfo } from '../flow';
+import { fileKey, flowOrder, generateFlow, type AiStep, type FlowInfo } from '../flow';
 import {
   hashDiff,
   isViewed,
@@ -57,7 +57,7 @@ const firstUnviewed = (cards: Card[]) => {
   return i === -1 ? cards.length : i;
 };
 
-/** Sorts cards in the chosen order: the API's, the local call-flow guess, or Claude's when there is one. */
+/** Sorts cards in the chosen order: the API's, the local call-flow guess, or Gemini's when there is one. */
 function arrange(cards: Card[], order: CardOrder, ai: AiStep[] | null): Card[] {
   const byApi = [...cards].sort((a, b) => a.apiIndex - b.apiIndex).map((c) => ({ ...c, flow: undefined }));
   if (order === 'files') return byApi;
@@ -186,7 +186,6 @@ export function Deck({ providers, reviews: requested, exitLabel, onExit, next: n
       review,
       files: (cards ?? []).filter((c) => c.review.id === review.id).sort((a, b) => a.apiIndex - b.apiIndex).map((c) => c.file),
     }));
-    const { generateFlow } = await import('../flowAi');
     const steps = await generateFlow(loadAiKey(), changes);
     saveAiFlow(reviews, steps);
     setAiFlow(steps);

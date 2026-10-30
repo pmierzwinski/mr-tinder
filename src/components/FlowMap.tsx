@@ -12,7 +12,7 @@ type Props = {
   canUseAi: boolean;
   onJump: (index: number) => void;
   onOrder: (order: CardOrder) => void;
-  /** Asks Claude for the order; rejects with the error to show. */
+  /** Asks Gemini for the order; rejects with the error to show. */
   onAi: () => Promise<void>;
   onClearAi: () => void;
   onClose: () => void;
@@ -62,7 +62,7 @@ export function FlowMap({ cards, index, order, aiOrdered, canUseAi, onJump, onOr
         {order === 'flow' && (
           <p className="hint small">
             {aiOrdered
-              ? 'Kolejność ułożona przez Claude.'
+              ? 'Kolejność ułożona przez Gemini.'
               : 'Plik wywołujący metodę jest przed plikiem z jej definicją (zgadywane z nazw w zmienionych liniach — wywołania przez interfejsy czy eventy mogą umknąć).'}
           </p>
         )}
@@ -97,7 +97,7 @@ export function FlowMap({ cards, index, order, aiOrdered, canUseAi, onJump, onOr
         </ol>
 
         {order === 'flow' && !canUseAi && (
-          <p className="hint small">✨ Kolejność z opisem roli każdego pliku może ułożyć AI — dodaj klucz API Claude w ⚙︎ Ustawieniach.</p>
+          <p className="hint small">✨ Kolejność z opisem roli każdego pliku może ułożyć AI — dodaj klucz Gemini w ⚙︎ Ustawieniach.</p>
         )}
         {order === 'flow' && canUseAi && (
           <>
@@ -109,10 +109,10 @@ export function FlowMap({ cards, index, order, aiOrdered, canUseAi, onJump, onOr
             ) : (
               <>
                 <button className="secondary" disabled={busy} onClick={askAi}>
-                  {busy ? 'Układam…' : '✨ Ułóż z AI (Claude)'}
+                  {busy ? 'Układam…' : '✨ Ułóż z AI (Gemini)'}
                 </button>
                 <p className="hint small">
-                  Wysyła diffy do Anthropic (płatne API, kilkanaście sekund).
+                  Wysyła diffy do Google. W darmowym planie Gemini mogą one służyć do ulepszania produktów Google.
                 </p>
               </>
             )}

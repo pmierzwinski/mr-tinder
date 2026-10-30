@@ -74,7 +74,7 @@ export function Summary({ providers, reviews, cards, drafts, setDrafts, exitLabe
           🧠 Sprawdź się — quiz z tych zmian (5 pytań)
         </button>
       ) : (
-        <div className="meta">Dodaj klucz API Claude w ustawieniach (⚙︎ na liście MR), żeby po review wygenerować quiz ze zmian.</div>
+        <div className="meta">Dodaj klucz API Gemini w ustawieniach (⚙︎ na liście MR), żeby po review wygenerować quiz ze zmian.</div>
       )}
       {reviews.map((review) => {
         const key = review.id;
