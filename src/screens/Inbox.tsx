@@ -1,10 +1,19 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import type { GitLab, MergeRequest, Project, User } from '../gitlab';
+import {
+  PROVIDER_LABEL,
+  providerFor,
+  type Person,
+  type ProviderKind,
+  type Providers,
+  type Repo,
+  type Review,
+  type ReviewProvider,
+} from '../review';
 import { loadRecent } from '../storage';
 import { loadInbox, MERGED_DAYS, type InboxData, type TaskGroup } from '../tasks';
 
-/** `taskKey` is set when the MRs were opened from a task, so the review can lead back to it. */
-type Props = { api: GitLab; username: string; onOpen: (mrs: MergeRequest[], taskKey?: string) => void };
+/** `taskKey` is set when the reviews were opened from a task, so the review can lead back to it. */
+type Props = { providers: Providers; onOpen: (reviews: Review[], taskKey?: string) => void };
 
 type Tab = 'review' | 'recent' | 'repos';
 
@@ -16,70 +25,64 @@ const TABS: { id: Tab; label: string }[] = [
 
 // Survives the Inbox unmounting while a deck is open, so coming back lands on the same tab.
 let lastTab: Tab = 'review';
-// Likewise for the expanded task, so finishing a review returns to that task's MR list.
+// Likewise for the expanded task, so finishing a review returns to that task's list.
 let lastOpenTask: string | null = null;
 
-type MrStatus = {
+type Status = {
   me: string;
-  approvedBy: User[];
+  approvedBy: Person[];
   required: number;
-  changes: User[];
+  changesRequestedBy: Person[];
   approvedByMe: boolean;
   /** Merged, approved by me, or approved by someone with no approvals left. */
   done: boolean;
 };
 
-type StatusLoader = (mr: MergeRequest) => Promise<MrStatus | null>;
+type StatusLoader = (review: Review) => Promise<Status | null>;
 
 // One loader per Inbox mount: statuses are cached while browsing tabs and refetched after a review.
 const StatusContext = createContext<StatusLoader | null>(null);
 
-function createStatusLoader(api: GitLab, username: string): StatusLoader {
-  const cache = new Map<number, Promise<MrStatus | null>>();
-  const load = async (mr: MergeRequest): Promise<MrStatus | null> => {
-    // Reviewer states need a newer GitLab; without them we just show approvals.
-    const [approvals, reviewers] = await Promise.all([api.approvals(mr).catch(() => null), api.reviewers(mr).catch(() => [])]);
-    if (!approvals) return null;
-    const approvedBy = (approvals.approved_by ?? []).map((a) => a.user);
-    const approvedByMe = approvedBy.some((u) => u.username === username);
-    return {
-      me: username,
-      approvedBy,
-      required: approvals.approvals_required ?? 0,
-      changes: (Array.isArray(reviewers) ? reviewers : []).filter((r) => r.state === 'requested_changes').map((r) => r.user),
-      approvedByMe,
-      done: mr.state === 'merged' || approvedByMe || (approvedBy.length > 0 && (approvals.approvals_left ?? 0) <= 0),
-    };
+function createStatusLoader(providers: Providers): StatusLoader {
+  const cache = new Map<string, Promise<Status | null>>();
+  const load = async (review: Review): Promise<Status | null> => {
+    const provider = providers[review.provider];
+    const status = await provider?.status(review).catch(() => null);
+    if (!provider || !status) return null;
+    const me = provider.me.username;
+    const approvedByMe = status.approvedBy.some((u) => u.username === me);
+    const fullyApproved = status.approvedBy.length > 0 && status.approvalsLeft !== undefined && status.approvalsLeft <= 0;
+    return { ...status, me, approvedByMe, done: review.state === 'merged' || approvedByMe || fullyApproved };
   };
-  return (mr) => {
-    if (!cache.has(mr.id)) cache.set(mr.id, load(mr));
-    return cache.get(mr.id)!;
+  return (review) => {
+    if (!cache.has(review.id)) cache.set(review.id, load(review));
+    return cache.get(review.id)!;
   };
 }
 
-/** Statuses for all given MRs, or null until every one has loaded. */
-function useStatuses(mrs: MergeRequest[] | null) {
+/** Statuses for all given reviews, or null until every one has loaded. */
+function useStatuses(reviews: Review[] | null) {
   const loadStatus = useContext(StatusContext)!;
-  const [statuses, setStatuses] = useState<Map<number, MrStatus | null> | null>(null);
+  const [statuses, setStatuses] = useState<Map<string, Status | null> | null>(null);
 
   useEffect(() => {
-    if (!mrs) return;
+    if (!reviews) return;
     let cancelled = false;
     setStatuses(null);
-    Promise.all(mrs.map(async (mr) => [mr.id, await loadStatus(mr)] as const)).then(
+    Promise.all(reviews.map(async (r) => [r.id, await loadStatus(r)] as const)).then(
       (entries) => !cancelled && setStatuses(new Map(entries)),
     );
     return () => {
       cancelled = true;
     };
-  }, [mrs, loadStatus]);
+  }, [reviews, loadStatus]);
 
   return statuses;
 }
 
-export function Inbox({ api, username, onOpen }: Props) {
+export function Inbox({ providers, onOpen }: Props) {
   const [tab, setTab] = useState<Tab>(lastTab);
-  const loadStatus = useMemo(() => createStatusLoader(api, username), [api, username]);
+  const loadStatus = useMemo(() => createStatusLoader(providers), [providers]);
 
   const select = (t: Tab) => {
     lastTab = t;
@@ -96,9 +99,9 @@ export function Inbox({ api, username, onOpen }: Props) {
             </button>
           ))}
         </div>
-        {tab === 'review' && <ReviewInbox api={api} username={username} onOpen={onOpen} />}
-        {tab === 'recent' && <RecentList api={api} onOpen={onOpen} />}
-        {tab === 'repos' && <RepoBrowser api={api} onOpen={onOpen} />}
+        {tab === 'review' && <ReviewInbox providers={providers} onOpen={onOpen} />}
+        {tab === 'recent' && <RecentList providers={providers} onOpen={onOpen} />}
+        {tab === 'repos' && <RepoBrowser providers={providers} onOpen={onOpen} />}
       </div>
     </StatusContext.Provider>
   );
@@ -113,14 +116,14 @@ function ShowHidden({ count, shown, label, onToggle }: { count: number; shown: b
   );
 }
 
-type InboxItem = { kind: 'task'; task: TaskGroup } | { kind: 'mr'; mr: MergeRequest };
+type InboxItem = { kind: 'task'; task: TaskGroup } | { kind: 'review'; review: Review };
 
-const updatedAt = (mr: MergeRequest) => Date.parse(mr.updated_at) || 0;
+const updatedAt = (r: Review) => Date.parse(r.updatedAt) || 0;
 const itemUpdatedAt = (item: InboxItem) =>
-  item.kind === 'mr' ? updatedAt(item.mr) : Math.max(...item.task.mrs.map(updatedAt));
+  item.kind === 'review' ? updatedAt(item.review) : Math.max(...item.task.reviews.map(updatedAt));
 
-/** Tasks (several MRs under one ticket, expandable) and single MRs in one list. */
-function ReviewInbox({ api, username, onOpen }: Props) {
+/** Tasks (several reviews under one ticket, expandable) and single reviews in one list. */
+function ReviewInbox({ providers, onOpen }: Props) {
   const [data, setData] = useState<InboxData | null>(null);
   const [open, setOpenState] = useState<string | null>(lastOpenTask);
   const setOpen = (key: string | null) => {
@@ -129,28 +132,28 @@ function ReviewInbox({ api, username, onOpen }: Props) {
   };
   const [showDone, setShowDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const allMrs = useMemo(() => (data ? [...data.tasks.flatMap((g) => g.mrs), ...data.singles] : null), [data]);
-  const statuses = useStatuses(allMrs);
+  const all = useMemo(() => (data ? [...data.tasks.flatMap((g) => g.reviews), ...data.singles] : null), [data]);
+  const statuses = useStatuses(all);
 
   useEffect(() => {
-    loadInbox(api, username).then(setData, (e) => setError(String(e.message ?? e)));
-  }, [api, username]);
+    loadInbox(providers).then(setData, (e) => setError(String(e.message ?? e)));
+  }, [providers]);
 
   if (error) return <div className="error">{error}</div>;
   if (!data || !statuses) return <div className="loading">Ładuję…</div>;
 
-  const taskDone = (g: TaskGroup) => g.mrs.every((mr) => statuses.get(mr.id)?.done);
-  // A single MR I approved hides until it's merged; merged ones stay visible for a while.
-  const singleDone = (mr: MergeRequest) => mr.state !== 'merged' && !!statuses.get(mr.id)?.approvedByMe;
+  const taskDone = (g: TaskGroup) => g.reviews.every((r) => statuses.get(r.id)?.done);
+  // A single review I approved hides until it's merged; merged ones stay visible for a while.
+  const singleDone = (r: Review) => r.state !== 'merged' && !!statuses.get(r.id)?.approvedByMe;
 
   const active: InboxItem[] = [
     ...data.tasks.filter((g) => !taskDone(g)).map((task) => ({ kind: 'task' as const, task })),
-    ...data.singles.filter((mr) => mr.state !== 'merged' && !singleDone(mr)).map((mr) => ({ kind: 'mr' as const, mr })),
+    ...data.singles.filter((r) => r.state !== 'merged' && !singleDone(r)).map((review) => ({ kind: 'review' as const, review })),
   ].sort((a, b) => itemUpdatedAt(b) - itemUpdatedAt(a));
-  const merged = data.singles.filter((mr) => mr.state === 'merged');
+  const merged = data.singles.filter((r) => r.state === 'merged');
   const done: InboxItem[] = [
     ...data.tasks.filter(taskDone).map((task) => ({ kind: 'task' as const, task })),
-    ...data.singles.filter(singleDone).map((mr) => ({ kind: 'mr' as const, mr })),
+    ...data.singles.filter(singleDone).map((review) => ({ kind: 'review' as const, review })),
   ];
 
   const renderTask = (g: TaskGroup) => (
@@ -161,25 +164,25 @@ function ReviewInbox({ api, username, onOpen }: Props) {
             <span className="kind-chip task">TASK</span> {g.key}
           </div>
           <div className="meta">
-            {g.mrs.length} MR · {g.mrs.filter((mr) => statuses.get(mr.id)?.done).length} gotowe ·{' '}
-            {new Set(g.mrs.map((m) => m.project_id)).size} repo · {open === g.key ? 'zwiń ▴' : 'pokaż ▾'}
+            {g.reviews.length} MR · {g.reviews.filter((r) => statuses.get(r.id)?.done).length} gotowe ·{' '}
+            {new Set(g.reviews.map((r) => r.repo)).size} repo · {open === g.key ? 'zwiń ▴' : 'pokaż ▾'}
           </div>
         </div>
         <button
           className="primary small"
           onClick={(e) => {
             e.stopPropagation();
-            // Merged MRs can't be reviewed any more, unless nothing else is left.
-            const pending = g.mrs.filter((mr) => mr.state !== 'merged');
+            // Merged reviews can't be reviewed any more, unless nothing else is left.
+            const pending = g.reviews.filter((r) => r.state !== 'merged');
             setOpen(g.key);
-            onOpen(pending.length ? pending : g.mrs, g.key);
+            onOpen(pending.length ? pending : g.reviews, g.key);
           }}
         >
           Review całości
         </button>
       </div>
       {open === g.key &&
-        g.mrs.map((mr) => <MrRow key={mr.id} mr={mr} status={statuses.get(mr.id)} onClick={() => onOpen([mr], g.key)} />)}
+        g.reviews.map((r) => <ReviewRow key={r.id} review={r} status={statuses.get(r.id)} onClick={() => onOpen([r], g.key)} />)}
     </div>
   );
 
@@ -187,16 +190,21 @@ function ReviewInbox({ api, username, onOpen }: Props) {
     item.kind === 'task' ? (
       renderTask(item.task)
     ) : (
-      <MrRow key={item.mr.id} mr={item.mr} status={statuses.get(item.mr.id)} chip onClick={() => onOpen([item.mr])} />
+      <ReviewRow key={item.review.id} review={item.review} status={statuses.get(item.review.id)} chip onClick={() => onOpen([item.review])} />
     );
 
   return (
     <div className="list">
+      {data.errors.map((e) => (
+        <div key={e} className="error">
+          {e}
+        </div>
+      ))}
       {!active.length && <div className="empty">Nic nie czeka na Twoje review 🎉</div>}
       {active.map(renderItem)}
       {merged.length > 0 && <div className="section-title">Zmergowane w ostatnich {MERGED_DAYS} dniach</div>}
-      {merged.map((mr) => (
-        <MrRow key={mr.id} mr={mr} status={statuses.get(mr.id)} chip onClick={() => onOpen([mr])} />
+      {merged.map((r) => (
+        <ReviewRow key={r.id} review={r} status={statuses.get(r.id)} chip onClick={() => onOpen([r])} />
       ))}
       <ShowHidden count={done.length} shown={showDone} label="zakończone" onToggle={() => setShowDone(!showDone)} />
       {showDone && done.map(renderItem)}
@@ -213,82 +221,81 @@ function timeAgo(ms: number) {
   return `${Math.round(hours / 24)} dni temu`;
 }
 
-function RecentList({ api, onOpen }: Omit<Props, 'username'>) {
-  const [recent] = useState(loadRecent);
-  const [mrs, setMrs] = useState<MergeRequest[] | null>(null);
-  const statuses = useStatuses(mrs);
+function RecentList({ providers, onOpen }: Props) {
+  // Only reviews from providers that are still connected.
+  const [recent] = useState(() => loadRecent().filter((e) => providers[e.review.provider]));
+  const [reviews, setReviews] = useState<Review[] | null>(null);
+  const statuses = useStatuses(reviews);
 
   useEffect(() => {
-    // Stored copies are snapshots from when the MR was opened; refresh them to show merges etc.
-    Promise.all(recent.map((e) => api.mergeRequest(e.mr).catch(() => e.mr))).then(setMrs);
-  }, [api, recent]);
+    // Stored copies are snapshots from when the review was opened; refresh them to show merges etc.
+    Promise.all(recent.map((e) => providerFor(providers, e.review).refresh(e.review).catch(() => e.review))).then(setReviews);
+  }, [providers, recent]);
 
   if (!recent.length) return <div className="empty">Tu pojawią się MR, które otworzysz w aplikacji.</div>;
-  if (!mrs || !statuses) return <div className="loading">Ładuję…</div>;
+  if (!reviews || !statuses) return <div className="loading">Ładuję…</div>;
 
   return (
     <div className="list">
-      {mrs.map((mr, i) => (
-        <MrRow key={mr.id} mr={mr} status={statuses.get(mr.id)} onClick={() => onOpen([mr])}>
+      {reviews.map((r, i) => (
+        <ReviewRow key={r.id} review={r} status={statuses.get(r.id)} onClick={() => onOpen([r])}>
           <div className="meta">Otwarte {timeAgo(recent[i].openedAt)}</div>
-        </MrRow>
+        </ReviewRow>
       ))}
     </div>
   );
 }
 
-function RepoBrowser({ api, onOpen }: Omit<Props, 'username'>) {
+function RepoBrowser({ providers, onOpen }: Props) {
   const [query, setQuery] = useState('');
-  const [projects, setProjects] = useState<Project[] | null>(null);
-  const [project, setProject] = useState<Project | null>(null);
-  const [mrs, setMrs] = useState<MergeRequest[] | null>(null);
+  const [repos, setRepos] = useState<Repo[] | null>(null);
+  const [repo, setRepo] = useState<Repo | null>(null);
+  const [reviews, setReviews] = useState<Review[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const statuses = useStatuses(mrs);
+  const statuses = useStatuses(reviews);
+  const list = useMemo(() => Object.values(providers) as ReviewProvider[], [providers]);
 
   useEffect(() => {
     const t = setTimeout(() => {
-      api.searchProjects(query).then(setProjects, (e) => setError(String(e.message ?? e)));
+      Promise.all(list.map((p) => p.repos(query))).then((r) => setRepos(r.flat()), (e) => setError(String(e.message ?? e)));
     }, 300);
     return () => clearTimeout(t);
-  }, [api, query]);
+  }, [list, query]);
 
   useEffect(() => {
-    if (!project) return;
-    setMrs(null);
-    api.projectMergeRequests(project.id).then(setMrs, (e) => setError(String(e.message ?? e)));
-  }, [api, project]);
+    if (!repo) return;
+    setReviews(null);
+    providers[repo.provider]!.repoReviews(repo).then(setReviews, (e) => setError(String(e.message ?? e)));
+  }, [providers, repo]);
 
-  const openFeature = async (mr: MergeRequest) => {
-    try {
-      const related = await api.mergeRequestsByBranch(mr.source_branch);
-      onOpen(related.length ? related : [mr]);
-    } catch (e) {
-      setError(String(e instanceof Error ? e.message : e));
-    }
+  const openFeature = async (review: Review) => {
+    const related = await Promise.all(list.map((p) => p.byBranch(review.sourceBranch).catch(() => [])));
+    const found = related.flat();
+    onOpen(found.length ? found : [review]);
   };
 
   if (error) return <div className="error">{error}</div>;
 
-  if (project) {
+  if (repo) {
     return (
       <div className="list">
-        <button className="link" onClick={() => setProject(null)}>
-          ← {project.path_with_namespace}
+        <button className="link" onClick={() => setRepo(null)}>
+          ← {repo.path}
         </button>
-        {!mrs && <div className="loading">Ładuję…</div>}
-        {mrs?.length === 0 && <div className="empty">Brak otwartych MR</div>}
-        {mrs?.map((mr) => (
-          <MrRow key={mr.id} mr={mr} status={statuses?.get(mr.id)} onClick={() => onOpen([mr])}>
+        {!reviews && <div className="loading">Ładuję…</div>}
+        {reviews?.length === 0 && <div className="empty">Brak otwartych MR</div>}
+        {reviews?.map((r) => (
+          <ReviewRow key={r.id} review={r} status={statuses?.get(r.id)} onClick={() => onOpen([r])}>
             <button
               className="link small"
               onClick={(e) => {
                 e.stopPropagation();
-                openFeature(mr);
+                openFeature(r);
               }}
             >
               + MR z tym samym branchem w innych repo
             </button>
-          </MrRow>
+          </ReviewRow>
         ))}
       </div>
     );
@@ -297,45 +304,53 @@ function RepoBrowser({ api, onOpen }: Omit<Props, 'username'>) {
   return (
     <div className="list">
       <input className="search" placeholder="Szukaj repozytorium…" value={query} onChange={(e) => setQuery(e.target.value)} />
-      {!projects && <div className="loading">Ładuję…</div>}
-      {projects?.map((p) => (
-        <div key={p.id} className="row-item" onClick={() => setProject(p)}>
+      {!repos && <div className="loading">Ładuję…</div>}
+      {repos?.map((p) => (
+        <div key={`${p.provider}:${p.id}`} className="row-item" onClick={() => setRepo(p)}>
           <div className="title">{p.name}</div>
-          <div className="meta">{p.path_with_namespace}</div>
+          <div className="meta">
+            <ProviderChip kind={p.provider} />
+            {p.path}
+          </div>
         </div>
       ))}
     </div>
   );
 }
 
-/** `chip` marks a standalone MR in a list that also holds tasks. */
-type MrRowProps = { mr: MergeRequest; status?: MrStatus | null; chip?: boolean; onClick: () => void; children?: React.ReactNode };
+function ProviderChip({ kind }: { kind: ProviderKind }) {
+  return <span className={`provider-chip ${kind}`}>{PROVIDER_LABEL[kind]}</span>;
+}
 
-function MrRow({ mr, status, chip, onClick, children }: MrRowProps) {
+/** `chip` marks a standalone review in a list that also holds tasks. */
+type ReviewRowProps = { review: Review; status?: Status | null; chip?: boolean; onClick: () => void; children?: React.ReactNode };
+
+function ReviewRow({ review, status, chip, onClick, children }: ReviewRowProps) {
   return (
     <div className={`row-item${status?.approvedByMe ? ' approved' : ''}`} onClick={onClick}>
       <div className="meta">
-        {chip && <span className="kind-chip">MR</span>}
-        {mr.references.full}
-        {mr.draft && <span className="badge">draft</span>}
-        {mr.state === 'merged' && <span className="badge merged">merged</span>}
-        {mr.state === 'closed' && <span className="badge">zamknięty</span>}
+        {chip && <span className="kind-chip">{review.provider === 'github' ? 'PR' : 'MR'}</span>}
+        <ProviderChip kind={review.provider} />
+        {review.ref}
+        {review.draft && <span className="badge">draft</span>}
+        {review.state === 'merged' && <span className="badge merged">merged</span>}
+        {review.state === 'closed' && <span className="badge">zamknięty</span>}
       </div>
-      <div className="title">{mr.title}</div>
+      <div className="title">{review.title}</div>
       <div className="meta">
-        {mr.author.name} · <code>{mr.source_branch}</code> → <code>{mr.target_branch}</code>
+        {review.author.name} · <code>{review.sourceBranch}</code> → <code>{review.targetBranch}</code>
       </div>
-      {status && <MrStatusBadges status={status} />}
+      {status && <StatusBadges status={status} />}
       {children}
     </div>
   );
 }
 
-const firstNames = (users: User[]) => users.map((u) => u.name.split(' ')[0]).join(', ');
+const firstNames = (users: Person[]) => users.map((u) => u.name.split(' ')[0]).join(', ');
 
 // My own approval is shown as the row's green frame; badges cover everyone else.
-function MrStatusBadges({ status }: { status: MrStatus }) {
-  const { me, approvedBy, required, changes, approvedByMe } = status;
+function StatusBadges({ status }: { status: Status }) {
+  const { me, approvedBy, required, changesRequestedBy, approvedByMe } = status;
   const others = approvedBy.filter((u) => u.username !== me);
   const count = required ? `${approvedBy.length}/${required}` : String(approvedBy.length);
 
@@ -348,9 +363,9 @@ function MrStatusBadges({ status }: { status: MrStatus }) {
       ) : (
         !approvedByMe && <span className="status muted">Brak approve{required ? ` (0/${required})` : ''}</span>
       )}
-      {changes.length > 0 && (
+      {changesRequestedBy.length > 0 && (
         <span className="status bad">
-          ✗ {changes.some((u) => u.username === me) ? 'Prosisz o zmiany' : `Zmiany: ${firstNames(changes)}`}
+          ✗ {changesRequestedBy.some((u) => u.username === me) ? 'Prosisz o zmiany' : `Zmiany: ${firstNames(changesRequestedBy)}`}
         </span>
       )}
     </div>

@@ -1,21 +1,20 @@
 import { useEffect, useState } from 'react';
-import { GitLab } from '../gitlab';
-import { loadAiKey, normalizeUrl, saveAiKey, saveCredentials, type Session } from '../storage';
+import { ConnectSheet } from '../components/ConnectSheet';
+import type { Account } from '../providers';
+import { PROVIDER_LABEL, type ProviderKind } from '../review';
+import { loadAiKey, saveAiKey } from '../storage';
 
 type Props = {
-  session: Session;
-  onSessionChange: (s: Session) => void;
-  onLogout: () => void;
+  accounts: Account[];
+  onAccountsChange: (accounts: Account[]) => void;
   onClose: () => void;
 };
 
-export function Settings({ session, onSessionChange, onLogout, onClose }: Props) {
-  const [baseUrl, setBaseUrl] = useState(session.baseUrl.replace(/^https:\/\//, ''));
-  // Empty token field = keep the current one.
-  const [token, setToken] = useState('');
+const KINDS: ProviderKind[] = ['gitlab', 'github'];
+
+export function Settings({ accounts, onAccountsChange, onClose }: Props) {
+  const [connecting, setConnecting] = useState<ProviderKind | null>(null);
   const [aiKey, setAiKey] = useState(loadAiKey);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
   // The confirmation lives on the save button itself, where the user is looking.
@@ -25,29 +24,11 @@ export function Settings({ session, onSessionChange, onLogout, onClose }: Props)
     return () => clearTimeout(t);
   }, [saved]);
 
-  const url = normalizeUrl(baseUrl);
-  const gitlabChanged = url !== session.baseUrl || token.trim() !== '';
-  const tokenLink = `${url}/-/user_settings/personal_access_tokens?name=MR%20Tinder&scopes=api`;
+  const accountOf = (kind: ProviderKind) => accounts.find((a) => a.kind === kind);
 
-  const save = async () => {
-    setBusy(true);
-    setError(null);
-    setSaved(false);
-    try {
-      if (gitlabChanged) {
-        const newToken = token.trim() || session.token;
-        // Check the new URL/token before replacing the working ones.
-        const user = await new GitLab(url, newToken).currentUser();
-        saveCredentials({ baseUrl: url, token: newToken });
-        onSessionChange({ baseUrl: url, token: newToken, user });
-        setToken('');
-      }
-      saveAiKey(aiKey.trim());
-      setSaved(true);
-    } catch (e) {
-      setError(`GitLab odrzucił dane: ${e instanceof Error ? e.message : e}`);
-    }
-    setBusy(false);
+  const disconnect = (kind: ProviderKind) => {
+    if (!confirm(`Odłączyć ${PROVIDER_LABEL[kind]} na tym urządzeniu?`)) return;
+    onAccountsChange(accounts.filter((a) => a.kind !== kind));
   };
 
   return (
@@ -59,34 +40,36 @@ export function Settings({ session, onSessionChange, onLogout, onClose }: Props)
       </div>
       <h2 className="summary-title">Ustawienia</h2>
 
-      <section className="settings-section">
-        <h3>GitLab</h3>
-        <label>
-          Adres
-          <input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} inputMode="url" autoCapitalize="off" autoCorrect="off" spellCheck={false} />
-        </label>
-        <label>
-          <span>
-            Nowy Personal Access Token (scope <code>api</code>)
-          </span>
-          <input
-            value={token}
-            onChange={(e) => setToken(e.target.value)}
-            type="password"
-            autoComplete="off"
-            placeholder={`obecny: ••••${session.token.slice(-4)}`}
-          />
-        </label>
-        <div className="meta">
-          Zalogowany jako {session.user.name} (@{session.user.username}) ·{' '}
-          <a href={tokenLink} target="_blank" rel="noreferrer">
-            utwórz nowy token
-          </a>
-        </div>
-        <button className="link small logout" onClick={() => confirm('Wylogować z GitLaba na tym urządzeniu?') && onLogout()}>
-          Wyloguj
-        </button>
-      </section>
+      {KINDS.map((kind) => {
+        const account = accountOf(kind);
+        return (
+          <section key={kind} className="settings-section">
+            <h3>{PROVIDER_LABEL[kind]}</h3>
+            {account ? (
+              <>
+                <div className="meta">
+                  Połączono jako {account.user.name} (@{account.user.username}) · {account.baseUrl.replace(/^https:\/\//, '')}
+                </div>
+                <div className="row">
+                  <button className="secondary small" onClick={() => setConnecting(kind)}>
+                    Zmień token
+                  </button>
+                  <button className="link small logout" onClick={() => disconnect(kind)}>
+                    Odłącz
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="hint small">Nie połączono — MR z {PROVIDER_LABEL[kind]} nie pojawią się na liście.</p>
+                <button className="primary small" onClick={() => setConnecting(kind)}>
+                  Połącz {PROVIDER_LABEL[kind]}
+                </button>
+              </>
+            )}
+          </section>
+        );
+      })}
 
       <section className="settings-section">
         <h3>Quiz po review (Gemini)</h3>
@@ -105,15 +88,28 @@ export function Settings({ session, onSessionChange, onLogout, onClose }: Props)
           W darmowym planie Gemini Google może wykorzystywać przesłane treści (tu: diffy kodu) do ulepszania swoich
           produktów, a mogą je czytać ludzie. Upewnij się, że to zgodne z zasadami firmy.
         </div>
+        <button
+          className={`primary small${saved ? ' saved' : ''}`}
+          onClick={() => {
+            saveAiKey(aiKey.trim());
+            setSaved(true);
+          }}
+        >
+          {saved ? 'Zapisano ✓' : 'Zapisz klucz'}
+        </button>
       </section>
 
-      {error && <div className="error">{error}</div>}
-
-      <div className="bottom-bar">
-        <button className={`primary big${saved ? ' saved' : ''}`} onClick={save} disabled={busy || !url}>
-          {busy ? 'Sprawdzam…' : saved ? 'Zapisano ✓' : 'Zapisz'}
-        </button>
-      </div>
+      {connecting && (
+        <ConnectSheet
+          kind={connecting}
+          current={accountOf(connecting)}
+          onConnected={(account) => {
+            onAccountsChange([...accounts.filter((a) => a.kind !== account.kind), account]);
+            setConnecting(null);
+          }}
+          onCancel={() => setConnecting(null)}
+        />
+      )}
     </div>
   );
 }

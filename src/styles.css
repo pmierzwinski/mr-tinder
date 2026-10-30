@@ -554,10 +554,18 @@ code {
 .pick-bar {
   background: var(--warn);
   color: #000;
-  padding: 8px 12px;
+  padding: 0 12px;
+  /* Fixed height: if the bar resized when a line gets picked, the code would shift under the finger. */
+  height: 40px;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   gap: 8px;
+}
+.pick-info > span:only-child {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .pick-bar .link {
   color: #000;
@@ -956,4 +964,36 @@ button.primary.saved {
   background: var(--ok);
   color: #04261b;
   box-shadow: none;
+}
+.provider-chip {
+  font-size: 10px;
+  font-weight: 700;
+  border-radius: 5px;
+  padding: 1px 6px;
+}
+.provider-chip.gitlab {
+  color: #fc8d5a;
+  background: rgba(252, 109, 38, 0.14);
+}
+.provider-chip.github {
+  color: #e6edf3;
+  background: rgba(255, 255, 255, 0.1);
+}
+.sheet.connect label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.sheet.connect .link {
+  align-self: flex-start;
+}
+.settings-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.settings-section .row {
+  align-items: center;
 }

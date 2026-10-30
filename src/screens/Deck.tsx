@@ -3,43 +3,31 @@ import { CommentSheet } from '../components/CommentSheet';
 import { DiffView, InlineNote } from '../components/DiffView';
 import { SwipeCard } from '../components/SwipeCard';
 import { diffStats, expandEnd, expandHunk, parseDiff, trailingGap, type DiffLine, type ExpandMode } from '../diff';
-import { ApiError, type DraftNote, type FileDiff, type GitLab, type MergeRequest, type Position } from '../gitlab';
+import {
+  draftsForFile,
+  isDraftOnLine,
+  isFileDraft,
+  PROVIDER_LABEL,
+  providerFor,
+  type Draft,
+  type FileDiff,
+  type Providers,
+  type Review,
+} from '../review';
 import { hashDiff, isViewed, loadSmallCode, saveSmallCode, setViewed } from '../storage';
 import { Summary } from './Summary';
 
 /** `fileLength` is known once the full file was fetched to expand context. */
-export type Card = { mr: MergeRequest; file: FileDiff; hash: string; lines: DiffLine[]; fileLength?: number };
+export type Card = { review: Review; file: FileDiff; hash: string; lines: DiffLine[]; fileLength?: number };
 
-export const mrKey = (mr: Pick<MergeRequest, 'project_id' | 'iid'>) => `${mr.project_id}:${mr.iid}`;
-
-type Props = { api: GitLab; mrs: MergeRequest[]; exitLabel: string; onExit: () => void };
-
-function buildPosition(mr: MergeRequest, file: FileDiff, line: DiffLine | null): Position {
-  const base = { ...mr.diff_refs!, old_path: file.old_path, new_path: file.new_path };
-  if (!line) return { ...base, position_type: 'file' };
-  return {
-    ...base,
-    position_type: 'text',
-    old_line: line.type === 'add' ? undefined : line.oldLine,
-    new_line: line.type === 'del' ? undefined : line.newLine,
-  };
-}
-
-function draftsForFile(drafts: DraftNote[], file: FileDiff) {
-  return drafts.filter((d) => d.position?.new_path === file.new_path || d.position?.old_path === file.old_path);
-}
+type Props = { providers: Providers; reviews: Review[]; exitLabel: string; onExit: () => void };
 
 const hasTextDiff = (file: FileDiff) => !file.too_large && !file.collapsed && !!file.diff;
 
-function isOnLine(d: DraftNote, l: DiffLine) {
-  if (l.type === 'del') return d.position?.old_line === l.oldLine && !d.position?.new_line;
-  return l.newLine !== undefined && d.position?.new_line === l.newLine;
-}
-
-export function Deck({ api, mrs, exitLabel, onExit }: Props) {
-  const [mergeRequests, setMergeRequests] = useState<MergeRequest[]>([]);
+export function Deck({ providers, reviews: requested, exitLabel, onExit }: Props) {
+  const [reviews, setReviews] = useState<Review[]>([]);
   const [cards, setCards] = useState<Card[] | null>(null);
-  const [drafts, setDrafts] = useState<Record<string, DraftNote[]>>({});
+  const [drafts, setDrafts] = useState<Record<string, Draft[]>>({});
   const [index, setIndex] = useState(0);
   const [picking, setPicking] = useState(false);
   // undefined = no comment sheet, null = comment on the whole file, number = index of the diff line
@@ -54,26 +42,27 @@ export function Deck({ api, mrs, exitLabel, onExit }: Props) {
     let cancelled = false;
     (async () => {
       const loaded = await Promise.all(
-        mrs.map(async (m) => {
-          const mr = await api.mergeRequest(m);
-          const [files, notes] = await Promise.all([api.diffs(mr), api.draftNotes(mr)]);
-          return { mr, files, notes };
+        requested.map(async (r) => {
+          const provider = providerFor(providers, r);
+          const review = await provider.refresh(r);
+          const [files, notes] = await Promise.all([provider.files(review), provider.drafts(review)]);
+          return { review, files, notes };
         }),
       );
       if (cancelled) return;
-      const all: Card[] = loaded.flatMap(({ mr, files }) =>
-        files.map((file) => ({ mr, file, hash: hashDiff(file.diff), lines: parseDiff(file.diff) })),
+      const all: Card[] = loaded.flatMap(({ review, files }) =>
+        files.map((file) => ({ review, file, hash: hashDiff(file.diff), lines: parseDiff(file.diff) })),
       );
-      setMergeRequests(loaded.map((l) => l.mr));
-      setDrafts(Object.fromEntries(loaded.map((l) => [mrKey(l.mr), l.notes])));
+      setReviews(loaded.map((l) => l.review));
+      setDrafts(Object.fromEntries(loaded.map((l) => [l.review.id, l.notes])));
       setCards(all);
-      const firstUnviewed = all.findIndex((c) => !isViewed(c.mr, c.file.new_path, c.hash));
+      const firstUnviewed = all.findIndex((c) => !isViewed(c.review, c.file.new_path, c.hash));
       setIndex(firstUnviewed === -1 ? all.length : firstUnviewed);
     })().catch((e) => !cancelled && setError(String(e instanceof Error ? e.message : e)));
     return () => {
       cancelled = true;
     };
-  }, [api, mrs]);
+  }, [providers, requested]);
 
   useEffect(() => {
     if (!toast) return;
@@ -85,7 +74,7 @@ export function Deck({ api, mrs, exitLabel, onExit }: Props) {
 
   const next = useCallback(() => {
     if (!card) return;
-    setViewed(card.mr, card.file.new_path, card.hash);
+    setViewed(card.review, card.file.new_path, card.hash);
     setPicking(false);
     setIndex((i) => i + 1);
   }, [card]);
@@ -99,7 +88,7 @@ export function Deck({ api, mrs, exitLabel, onExit }: Props) {
   const undo = () => {
     if (!cards || index === 0) return;
     const prev = cards[index - 1];
-    setViewed(prev.mr, prev.file.new_path, null);
+    setViewed(prev.review, prev.file.new_path, null);
     setPicking(false);
     setIndex(index - 1);
   };
@@ -116,7 +105,7 @@ export function Deck({ api, mrs, exitLabel, onExit }: Props) {
     return () => window.removeEventListener('keydown', onKey);
   }, [card, commenting, picking, next, startComment]);
 
-  const fileDrafts = useMemo(() => (card ? draftsForFile(drafts[mrKey(card.mr)] ?? [], card.file) : []), [card, drafts]);
+  const fileDrafts = useMemo(() => (card ? draftsForFile(drafts[card.review.id] ?? [], card.file) : []), [card, drafts]);
 
   if (error) {
     return (
@@ -133,8 +122,8 @@ export function Deck({ api, mrs, exitLabel, onExit }: Props) {
   if (!card) {
     return (
       <Summary
-        api={api}
-        mrs={mergeRequests}
+        providers={providers}
+        reviews={reviews}
         cards={cards}
         drafts={drafts}
         setDrafts={setDrafts}
@@ -146,38 +135,31 @@ export function Deck({ api, mrs, exitLabel, onExit }: Props) {
   }
 
   const commentLine = commentAt == null ? null : card.lines[commentAt];
-  const { file, mr } = card;
+  const { file, review } = card;
+  const provider = providerFor(providers, review);
   // Expanded context only adds unchanged lines, so these counts stay those of the diff.
   const { added, removed } = diffStats(card.lines);
 
   const addComment = async (text: string) => {
-    let note: DraftNote;
-    try {
-      note = await api.createDraftNote(mr, text, buildPosition(mr, file, commentLine));
-    } catch (e) {
-      // File-level positions need a recent GitLab; fall back to a general comment naming the file.
-      if (commentLine || !(e instanceof ApiError) || e.status !== 400) throw e;
-      note = await api.createDraftNote(mr, `**\`${file.new_path}\`**\n\n${text}`);
-      note.position = { old_path: file.old_path, new_path: file.new_path };
-    }
-    setDrafts((d) => ({ ...d, [mrKey(mr)]: [...(d[mrKey(mr)] ?? []), note] }));
+    const note = await provider.addDraft(review, file, commentLine, text);
+    setDrafts((d) => ({ ...d, [review.id]: [...(d[review.id] ?? []), note] }));
     setCommentAt(undefined);
     setToast('Komentarz dodany do review');
   };
 
-  const deleteNote = async (note: DraftNote) => {
+  const deleteNote = async (note: Draft) => {
     if (!confirm('Usunąć ten komentarz z review?')) return;
     try {
-      await api.deleteDraftNote(mr, note.id);
-      setDrafts((d) => ({ ...d, [mrKey(mr)]: d[mrKey(mr)].filter((n) => n.id !== note.id) }));
+      await provider.deleteDraft(review, note);
+      setDrafts((d) => ({ ...d, [review.id]: d[review.id].filter((n) => n.id !== note.id) }));
     } catch (e) {
       setToast(`Nie udało się usunąć: ${e instanceof Error ? e.message : e}`);
     }
   };
 
   const expand = async (at: number | 'end', mode: ExpandMode) => {
-    const key = `${mrKey(mr)}:${file.new_path}`;
-    if (!fileCache.current.has(key)) fileCache.current.set(key, api.fileLines(mr, file.new_path));
+    const key = `${review.id}:${file.new_path}`;
+    if (!fileCache.current.has(key)) fileCache.current.set(key, provider.fileLines(review, file.new_path));
     let content: string[];
     try {
       content = await fileCache.current.get(key)!;
@@ -214,7 +196,7 @@ export function Deck({ api, mrs, exitLabel, onExit }: Props) {
     setCommentAt(undefined);
   };
 
-  const fileNotes = fileDrafts.filter((d) => !d.position?.new_line && !d.position?.old_line);
+  const fileNotes = fileDrafts.filter(isFileDraft);
 
   return (
     <div className={`screen deck${smallCode ? ' small-code' : ''}`}>
@@ -222,10 +204,10 @@ export function Deck({ api, mrs, exitLabel, onExit }: Props) {
         <button className="link" onClick={onExit}>
           ✕
         </button>
-        <MrProgress
-          mr={mr}
-          position={mergeRequests.findIndex((m) => m.id === mr.id) + 1}
-          total={mergeRequests.length}
+        <ReviewProgress
+          review={review}
+          position={reviews.findIndex((r) => r.id === review.id) + 1}
+          total={reviews.length}
           done={index}
           count={cards.length}
         />
@@ -276,15 +258,15 @@ export function Deck({ api, mrs, exitLabel, onExit }: Props) {
           {!hasTextDiff(file) ? (
             <div className="empty">
               {file.diff ? 'Diff za duży do pokazania.' : 'Brak diffu tekstowego (plik binarny / zmiana uprawnień).'}{' '}
-              <a href={`${mr.web_url}/diffs`} target="_blank" rel="noreferrer">
-                Otwórz w GitLabie
+              <a href={review.webUrl} target="_blank" rel="noreferrer">
+                Otwórz w {PROVIDER_LABEL[review.provider]}
               </a>
             </div>
           ) : (
             <DiffView
               path={file.new_path}
               lines={card.lines}
-              notesFor={(l) => fileDrafts.filter((d) => isOnLine(d, l))}
+              notesFor={(l) => fileDrafts.filter((d) => isDraftOnLine(d, l))}
               onDeleteNote={deleteNote}
               picking={picking}
               onPick={(i) => {
@@ -294,6 +276,7 @@ export function Deck({ api, mrs, exitLabel, onExit }: Props) {
               highlight={commentAt ?? null}
               onExpand={expand}
               canExpandEnd={canExpandEnd}
+              canCommentOnContext={provider.canCommentOnContext}
             />
           )}
         </SwipeCard>
@@ -332,31 +315,32 @@ export function Deck({ api, mrs, exitLabel, onExit }: Props) {
 }
 
 /**
- * Progress bar that doubles as the MR header: repo, MR number, target branch and title, filling up
- * as files are reviewed. Tapping it opens the MR in GitLab.
+ * Progress bar that doubles as the review header: repo, MR/PR number, target branch and title,
+ * filling up as files are reviewed. Tapping it opens the review in GitLab/GitHub.
  */
-function MrProgress({ mr, position, total, done, count }: { mr: MergeRequest; position: number; total: number; done: number; count: number }) {
-  // "group/sub/repo!12" -> repo path and MR number
-  const [path, iid] = mr.references.full.split('!');
-  const slash = path.lastIndexOf('/');
+function ReviewProgress({ review, position, total, done, count }: { review: Review; position: number; total: number; done: number; count: number }) {
+  const slash = review.repo.lastIndexOf('/');
   return (
-    <a className="mr-progress" href={mr.web_url} target="_blank" rel="noreferrer">
+    <a className="mr-progress" href={review.webUrl} target="_blank" rel="noreferrer">
       <div className="mr-progress-fill" style={{ width: `${(done / count) * 100}%` }} />
       <div className="mr-progress-line">
         {total > 1 && (
           <span className="badge">
-            MR {position}/{total}
+            {position}/{total}
           </span>
         )}
-        <span className="mr-progress-group">{path.slice(0, slash + 1)}</span>
-        <span className="mr-progress-repo">{path.slice(slash + 1)}</span>
-        <span className="mr-progress-iid">!{iid}</span>
-        <span className="mr-progress-target">→ {mr.target_branch}</span>
+        <span className="mr-progress-group">{review.repo.slice(0, slash + 1)}</span>
+        <span className="mr-progress-repo">{review.repo.slice(slash + 1)}</span>
+        <span className="mr-progress-iid">
+          {review.provider === 'gitlab' ? '!' : '#'}
+          {review.number}
+        </span>
+        <span className="mr-progress-target">→ {review.targetBranch}</span>
         <span className="mr-progress-count">
           {done + 1}/{count}
         </span>
       </div>
-      <div className="mr-progress-title">{mr.title}</div>
+      <div className="mr-progress-title">{review.title}</div>
     </a>
   );
 }

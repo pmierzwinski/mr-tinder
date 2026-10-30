@@ -5,6 +5,8 @@ export type DiffLine = {
   newLine?: number;
   /** Hunk headers only: where the hunk starts in the old and new file. */
   start?: { old: number; new: number };
+  /** Context revealed from the full file rather than part of the diff. */
+  expanded?: boolean;
 };
 
 const HUNK = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/;
@@ -69,7 +71,7 @@ export const EXPAND_STEP = 20;
 
 function contextLines(file: string[], from: number, to: number, delta: number): DiffLine[] {
   const out: DiffLine[] = [];
-  for (let n = from; n <= to; n++) out.push({ type: 'ctx', text: file[n - 1] ?? '', newLine: n, oldLine: n - delta });
+  for (let n = from; n <= to; n++) out.push({ type: 'ctx', text: file[n - 1] ?? '', newLine: n, oldLine: n - delta, expanded: true });
   return out;
 }
 

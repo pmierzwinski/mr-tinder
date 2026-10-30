@@ -1,15 +1,15 @@
 import { useMemo, useState, type Dispatch, type SetStateAction } from 'react';
 import { QuizView } from '../components/QuizView';
-import type { DraftNote, GitLab, MergeRequest } from '../gitlab';
+import { providerFor, type Draft, type Providers, type Review } from '../review';
 import { isViewed, loadAiKey } from '../storage';
-import { mrKey, type Card } from './Deck';
+import type { Card } from './Deck';
 
 type Props = {
-  api: GitLab;
-  mrs: MergeRequest[];
+  providers: Providers;
+  reviews: Review[];
   cards: Card[];
-  drafts: Record<string, DraftNote[]>;
-  setDrafts: Dispatch<SetStateAction<Record<string, DraftNote[]>>>;
+  drafts: Record<string, Draft[]>;
+  setDrafts: Dispatch<SetStateAction<Record<string, Draft[]>>>;
   exitLabel: string;
   onExit: () => void;
   onRestart: () => void;
@@ -24,50 +24,43 @@ const DONE: Record<Outcome, string> = {
   approve: 'Zatwierdzone ✓',
 };
 
-export function Summary({ api, mrs, cards, drafts, setDrafts, exitLabel, onExit, onRestart }: Props) {
+export function Summary({ providers, reviews, cards, drafts, setDrafts, exitLabel, onExit, onRestart }: Props) {
   const [summaries, setSummaries] = useState<Record<string, string>>({});
   const [status, setStatus] = useState<Record<string, Status>>({});
   const [aiKey] = useState(loadAiKey);
   const [quizOpen, setQuizOpen] = useState(false);
   const quizChanges = useMemo(
-    () => mrs.map((mr) => ({ mr, files: cards.filter((c) => mrKey(c.mr) === mrKey(mr)).map((c) => c.file) })),
-    [mrs, cards],
+    () => reviews.map((review) => ({ review, files: cards.filter((c) => c.review.id === review.id).map((c) => c.file) })),
+    [reviews, cards],
   );
 
-  const update = (mr: MergeRequest, s: Status) => setStatus((prev) => ({ ...prev, [mrKey(mr)]: s }));
+  const update = (review: Review, s: Status) => setStatus((prev) => ({ ...prev, [review.id]: s }));
 
-  const run = async (mr: MergeRequest, outcome: Outcome) => {
-    const key = mrKey(mr);
-    update(mr, { busy: true });
+  const run = async (review: Review, outcome: Outcome) => {
+    update(review, { busy: true });
     try {
-      const summary = summaries[key]?.trim();
-      if (summary) await api.createDraftNote(mr, summary);
-      if (summary || drafts[key]?.length) await api.publishDrafts(mr);
-      setDrafts((d) => ({ ...d, [key]: [] }));
-      setSummaries((s) => ({ ...s, [key]: '' }));
-      if (outcome === 'approve') await api.approve(mr);
-      update(mr, { done: DONE[outcome] });
+      const summary = summaries[review.id]?.trim();
+      await providerFor(providers, review).submit(review, { summary, approve: outcome === 'approve' });
+      setDrafts((d) => ({ ...d, [review.id]: [] }));
+      setSummaries((s) => ({ ...s, [review.id]: '' }));
+      update(review, { done: DONE[outcome] });
     } catch (e) {
-      update(mr, { error: String(e instanceof Error ? e.message : e) });
+      update(review, { error: String(e instanceof Error ? e.message : e) });
     }
   };
 
-  const removeDraft = async (mr: MergeRequest, note: DraftNote) => {
+  const removeDraft = async (review: Review, note: Draft) => {
     try {
-      await api.deleteDraftNote(mr, note.id);
-      setDrafts((d) => ({ ...d, [mrKey(mr)]: d[mrKey(mr)].filter((n) => n.id !== note.id) }));
+      await providerFor(providers, review).deleteDraft(review, note);
+      setDrafts((d) => ({ ...d, [review.id]: d[review.id].filter((n) => n.id !== note.id) }));
     } catch (e) {
-      update(mr, { error: String(e instanceof Error ? e.message : e) });
+      update(review, { error: String(e instanceof Error ? e.message : e) });
     }
   };
 
-  const saveDraft = async (mr: MergeRequest, note: DraftNote, text: string) => {
-    const updated = await api.updateDraftNote(mr, note.id, text);
-    setDrafts((d) => ({
-      ...d,
-      // Keep our copy of the position: the fallback file-level notes only have it locally.
-      [mrKey(mr)]: d[mrKey(mr)].map((n) => (n.id === note.id ? { ...n, note: updated?.note ?? text } : n)),
-    }));
+  const saveDraft = async (review: Review, note: Draft, text: string) => {
+    const updated = await providerFor(providers, review).updateDraft(review, note, text);
+    setDrafts((d) => ({ ...d, [review.id]: d[review.id].map((n) => (n.id === note.id ? updated : n)) }));
   };
 
   return (
@@ -82,17 +75,17 @@ export function Summary({ api, mrs, cards, drafts, setDrafts, exitLabel, onExit,
       ) : (
         <div className="meta">Dodaj klucz API Gemini w ustawieniach (⚙︎ na liście MR), żeby po review wygenerować quiz ze zmian.</div>
       )}
-      {mrs.map((mr) => {
-        const key = mrKey(mr);
-        const files = cards.filter((c) => mrKey(c.mr) === key);
-        const viewed = files.filter((c) => isViewed(c.mr, c.file.new_path, c.hash)).length;
+      {reviews.map((review) => {
+        const key = review.id;
+        const files = cards.filter((c) => c.review.id === key);
+        const viewed = files.filter((c) => isViewed(c.review, c.file.new_path, c.hash)).length;
         const notes = drafts[key] ?? [];
         const s = status[key] ?? {};
         return (
           <div key={key} className="summary-mr">
-            <div className="meta">{mr.references.full}</div>
-            <a className="title" href={mr.web_url} target="_blank" rel="noreferrer">
-              {mr.title}
+            <div className="meta">{review.ref}</div>
+            <a className="title" href={review.webUrl} target="_blank" rel="noreferrer">
+              {review.title}
             </a>
             <div className="meta">
               Obejrzane pliki: {viewed}/{files.length} · Komentarze w drafcie: {notes.length}
@@ -103,8 +96,8 @@ export function Summary({ api, mrs, cards, drafts, setDrafts, exitLabel, onExit,
                   <DraftItem
                     key={n.id}
                     note={n}
-                    onSave={(text) => saveDraft(mr, n, text)}
-                    onDelete={() => removeDraft(mr, n)}
+                    onSave={(text) => saveDraft(review, n, text)}
+                    onDelete={() => removeDraft(review, n)}
                   />
                 ))}
               </ul>
@@ -120,10 +113,10 @@ export function Summary({ api, mrs, cards, drafts, setDrafts, exitLabel, onExit,
               <div className="done">{s.done}</div>
             ) : (
               <div className="review-actions">
-                <button className="primary" disabled={s.busy} onClick={() => run(mr, 'approve')}>
+                <button className="primary" disabled={s.busy} onClick={() => run(review, 'approve')}>
                   ✓ Approve
                 </button>
-                <button className="secondary" disabled={s.busy || !(drafts[key]?.length || summaries[key]?.trim())} onClick={() => run(mr, 'comment')}>
+                <button className="secondary" disabled={s.busy || !(drafts[key]?.length || summaries[key]?.trim())} onClick={() => run(review, 'comment')}>
                   Wyślij komentarze bez approve
                 </button>
               </div>
@@ -132,9 +125,9 @@ export function Summary({ api, mrs, cards, drafts, setDrafts, exitLabel, onExit,
         );
       })}
 
-      {mrs.length > 1 && (
-        <button className="primary wide" onClick={() => mrs.filter((mr) => !status[mrKey(mr)]?.done).forEach((mr) => run(mr, 'approve'))}>
-          Approve wszystkie ({mrs.length})
+      {reviews.length > 1 && (
+        <button className="primary wide" onClick={() => reviews.filter((r) => !status[r.id]?.done).forEach((r) => run(r, 'approve'))}>
+          Approve wszystkie ({reviews.length})
         </button>
       )}
 
@@ -150,13 +143,12 @@ export function Summary({ api, mrs, cards, drafts, setDrafts, exitLabel, onExit,
   );
 }
 
-type DraftItemProps = { note: DraftNote; onSave: (text: string) => Promise<void>; onDelete: () => void };
+type DraftItemProps = { note: Draft; onSave: (text: string) => Promise<void>; onDelete: () => void };
 
 function DraftItem({ note, onSave, onDelete }: DraftItemProps) {
   const [text, setText] = useState<string | null>(null); // null = not editing
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const p = note.position;
 
   const save = async () => {
     setBusy(true);
@@ -173,13 +165,13 @@ function DraftItem({ note, onSave, onDelete }: DraftItemProps) {
   return (
     <li>
       <div className="meta">
-        {p?.new_path ?? 'ogólny'}
-        {p?.new_line ? `:${p.new_line}` : p?.old_line ? `:-${p.old_line}` : ''}
+        {note.path ?? 'ogólny'}
+        {note.newLine ? `:${note.newLine}` : note.oldLine ? `:-${note.oldLine}` : ''}
       </div>
       {text === null ? (
         <>
-          <div className="note editable" onClick={() => setText(note.note)}>
-            {note.note}
+          <div className="note editable" onClick={() => setText(note.body)}>
+            {note.body}
             <span className="edit-hint"> ✎</span>
           </div>
           <button className="link small" onClick={onDelete}>

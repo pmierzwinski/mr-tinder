@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { DiffLine } from '../diff';
 
 type Props = {
@@ -12,6 +12,8 @@ export function CommentSheet({ path, line, onCancel, onSubmit }: Props) {
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Tapping a line opens the sheet on touchend; the click the browser fires right after must not close it.
+  const openedAt = useRef(Date.now());
 
   const insert = (snippet: string) => setText((t) => (t ? `${t}\n${snippet}` : snippet));
 
@@ -27,7 +29,7 @@ export function CommentSheet({ path, line, onCancel, onSubmit }: Props) {
   };
 
   return (
-    <div className="sheet-backdrop" onClick={onCancel}>
+    <div className="sheet-backdrop" onClick={() => Date.now() - openedAt.current > 400 && onCancel()}>
       <div className="sheet" onClick={(e) => e.stopPropagation()}>
         <div className="sheet-title">
           Komentarz do <code>{path}</code>

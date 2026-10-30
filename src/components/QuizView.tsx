@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react';
-import type { FileDiff, MergeRequest } from '../gitlab';
-import type { QuizQuestion } from '../quiz';
+import type { Changes, QuizQuestion } from '../quiz';
 
-type Props = { apiKey: string; changes: { mr: MergeRequest; files: FileDiff[] }[]; onClose: () => void };
+type Props = { apiKey: string; changes: Changes; onClose: () => void };
 
 export function QuizView({ apiKey, changes, onClose }: Props) {
   const [questions, setQuestions] = useState<QuizQuestion[] | null>(null);

@@ -1,8 +1,5 @@
-import type { MergeRequest, User } from './gitlab';
-
-export type Session = { baseUrl: string; token: string; user: User };
-
-const SESSION_KEY = 'mr-tinder:session';
+import type { Account } from './providers';
+import type { Draft, Review } from './review';
 
 function readJson<T>(key: string): T | null {
   try {
@@ -21,38 +18,43 @@ function writeJson(key: string, value: unknown) {
   }
 }
 
-export const loadSession = () => readJson<Session>(SESSION_KEY);
-export const saveSession = (s: Session) => writeJson(SESSION_KEY, s);
-export const clearSession = () => localStorage.removeItem(SESSION_KEY);
+// Connected GitLab/GitHub accounts. Older versions stored a single GitLab login as "session".
+const ACCOUNTS_KEY = 'mr-tinder:accounts';
+const LEGACY_SESSION_KEY = 'mr-tinder:session';
 
-// Kept separately from the session so URL and token survive logging out.
-export type Credentials = { baseUrl: string; token: string };
-const CREDENTIALS_KEY = 'mr-tinder:credentials';
-const LEGACY_URL_KEY = 'mr-tinder:gitlab-url';
+type LegacySession = { baseUrl: string; token: string; user: { username: string; name: string; avatar_url?: string } };
 
-export function loadCredentials(): Credentials {
-  return (
-    readJson<Credentials>(CREDENTIALS_KEY) ??
-    loadSession() ?? { baseUrl: readJson<string>(LEGACY_URL_KEY) ?? '', token: '' }
-  );
+export function loadAccounts(): Account[] {
+  const accounts = readJson<Account[]>(ACCOUNTS_KEY);
+  if (accounts) return accounts;
+  const legacy = readJson<LegacySession>(LEGACY_SESSION_KEY);
+  if (!legacy) return [];
+  const { username, name, avatar_url } = legacy.user;
+  return [{ kind: 'gitlab', baseUrl: legacy.baseUrl, token: legacy.token, user: { username, name, avatarUrl: avatar_url } }];
 }
-export const saveCredentials = (c: Credentials) => writeJson(CREDENTIALS_KEY, c);
 
-// MRs opened in the app, newest first, for the "Ostatnie" tab.
-export type RecentEntry = { mr: MergeRequest; openedAt: number };
-const RECENT_KEY = 'mr-tinder:recent';
+export const saveAccounts = (accounts: Account[]) => writeJson(ACCOUNTS_KEY, accounts);
+
+// Reviews opened in the app, newest first, for the "Ostatnie" tab.
+export type RecentEntry = { review: Review; openedAt: number };
+const RECENT_KEY = 'mr-tinder:recent-reviews';
 const RECENT_LIMIT = 30;
 
 export const loadRecent = () => readJson<RecentEntry[]>(RECENT_KEY) ?? [];
 
-export function addRecent(mrs: MergeRequest[]) {
+export function addRecent(reviews: Review[]) {
   const now = Date.now();
-  const ids = new Set(mrs.map((mr) => mr.id));
-  const rest = loadRecent().filter((e) => !ids.has(e.mr.id));
-  writeJson(RECENT_KEY, [...mrs.map((mr) => ({ mr, openedAt: now })), ...rest].slice(0, RECENT_LIMIT));
+  const ids = new Set(reviews.map((r) => r.id));
+  const rest = loadRecent().filter((e) => !ids.has(e.review.id));
+  writeJson(RECENT_KEY, [...reviews.map((review) => ({ review, openedAt: now })), ...rest].slice(0, RECENT_LIMIT));
 }
 
-// Anthropic API key for generating review quizzes; stays on this device only.
+// GitHub has no API for building up a pending review comment by comment, so drafts wait here until submit.
+const githubDraftsKey = (reviewId: string) => `mr-tinder:github-drafts:${reviewId}`;
+export const loadGithubDrafts = (reviewId: string) => readJson<Draft[]>(githubDraftsKey(reviewId)) ?? [];
+export const saveGithubDrafts = (reviewId: string, drafts: Draft[]) => writeJson(githubDraftsKey(reviewId), drafts);
+
+// Gemini API key for generating review quizzes; stays on this device only.
 const AI_KEY = 'mr-tinder:ai-key';
 export const loadAiKey = () => readJson<string>(AI_KEY) ?? '';
 export const saveAiKey = (key: string) => writeJson(AI_KEY, key);
@@ -73,7 +75,9 @@ export function normalizeUrl(input: string) {
 // We store a hash of each file's diff: when a new push changes the file, it shows up again.
 type ViewedMap = Record<string, string>;
 
-const viewedKey = (mr: MergeRequest) => `mr-tinder:viewed:${mr.project_id}:${mr.iid}`;
+// GitLab keeps the key format of earlier versions so already viewed files stay viewed.
+const viewedKey = (r: Review) =>
+  r.provider === 'gitlab' ? `mr-tinder:viewed:${r.repoId}:${r.number}` : `mr-tinder:viewed:${r.id}`;
 
 export function hashDiff(s: string) {
   let h = 0x811c9dc5;
@@ -84,13 +88,13 @@ export function hashDiff(s: string) {
   return (h >>> 0).toString(36);
 }
 
-export function isViewed(mr: MergeRequest, path: string, hash: string) {
-  return readJson<ViewedMap>(viewedKey(mr))?.[path] === hash;
+export function isViewed(review: Review, path: string, hash: string) {
+  return readJson<ViewedMap>(viewedKey(review))?.[path] === hash;
 }
 
-export function setViewed(mr: MergeRequest, path: string, hash: string | null) {
-  const map = readJson<ViewedMap>(viewedKey(mr)) ?? {};
+export function setViewed(review: Review, path: string, hash: string | null) {
+  const map = readJson<ViewedMap>(viewedKey(review)) ?? {};
   if (hash) map[path] = hash;
   else delete map[path];
-  writeJson(viewedKey(mr), map);
+  writeJson(viewedKey(review), map);
 }

@@ -1,3 +1,5 @@
+import { splitLines, type FileDiff } from './review';
+
 export type User = { id: number; username: string; name: string; avatar_url: string };
 
 export type Project = { id: number; path_with_namespace: string; name: string; last_activity_at: string };
@@ -20,17 +22,6 @@ export type MergeRequest = {
   references: { full: string };
   updated_at: string;
   diff_refs?: DiffRefs;
-};
-
-export type FileDiff = {
-  old_path: string;
-  new_path: string;
-  diff: string;
-  new_file: boolean;
-  renamed_file: boolean;
-  deleted_file: boolean;
-  too_large?: boolean;
-  collapsed?: boolean;
 };
 
 export type Position = DiffRefs & {
@@ -60,6 +51,9 @@ export class ApiError extends Error {
 }
 
 type Query = Record<string, string | number | boolean | undefined>;
+
+/** What addresses one merge request. */
+export type MrRef = { project_id: number | string; iid: number };
 
 export class GitLab {
   constructor(readonly baseUrl: string, private readonly token: string) {}
@@ -105,7 +99,7 @@ export class GitLab {
     return out;
   }
 
-  private mrPath(mr: Pick<MergeRequest, 'project_id' | 'iid'>) {
+  private mrPath(mr: MrRef) {
     return `/projects/${mr.project_id}/merge_requests/${mr.iid}`;
   }
 
@@ -156,11 +150,11 @@ export class GitLab {
     return this.getAll<MergeRequest>(`/projects/${projectId}/merge_requests`, { state: 'opened' });
   }
 
-  mergeRequest(mr: Pick<MergeRequest, 'project_id' | 'iid'>) {
+  mergeRequest(mr: MrRef) {
     return this.get<MergeRequest>(this.mrPath(mr));
   }
 
-  async diffs(mr: MergeRequest): Promise<FileDiff[]> {
+  async diffs(mr: MrRef): Promise<FileDiff[]> {
     try {
       return await this.getAll<FileDiff>(`${this.mrPath(mr)}/diffs`);
     } catch (e) {
@@ -171,50 +165,46 @@ export class GitLab {
     }
   }
 
-  approvals(mr: MergeRequest) {
+  approvals(mr: MrRef) {
     return this.get<Approvals>(`${this.mrPath(mr)}/approvals`);
   }
 
-  reviewers(mr: MergeRequest) {
+  reviewers(mr: MrRef) {
     return this.get<Reviewer[]>(`${this.mrPath(mr)}/reviewers`);
   }
 
-  /** File content at the MR's head commit, as lines. */
-  async fileLines(mr: MergeRequest, path: string): Promise<string[]> {
-    const ref = mr.diff_refs?.head_sha ?? mr.sha;
+  /** File content at commit `ref`, as lines. */
+  async fileLines(projectId: number | string, ref: string, path: string): Promise<string[]> {
     const res = await fetch(
-      `${this.baseUrl}/api/v4/projects/${mr.project_id}/repository/files/${encodeURIComponent(path)}/raw?ref=${ref}`,
+      `${this.baseUrl}/api/v4/projects/${projectId}/repository/files/${encodeURIComponent(path)}/raw?ref=${ref}`,
       { headers: { 'PRIVATE-TOKEN': this.token } },
     );
     if (!res.ok) throw new ApiError(res.status, `${res.status}: ${res.statusText}`);
-    const text = await res.text();
-    const lines = text.split('\n').map((l) => l.replace(/\r$/, ''));
-    if (text.endsWith('\n')) lines.pop();
-    return lines;
+    return splitLines(await res.text());
   }
 
-  draftNotes(mr: MergeRequest) {
+  draftNotes(mr: MrRef) {
     return this.getAll<DraftNote>(`${this.mrPath(mr)}/draft_notes`);
   }
 
-  createDraftNote(mr: MergeRequest, note: string, position?: Position) {
+  createDraftNote(mr: MrRef, note: string, position?: Position) {
     return this.post<DraftNote>(`${this.mrPath(mr)}/draft_notes`, { note, position });
   }
 
-  updateDraftNote(mr: MergeRequest, id: number, note: string) {
+  updateDraftNote(mr: MrRef, id: number, note: string) {
     return this.request<DraftNote>('PUT', `${this.mrPath(mr)}/draft_notes/${id}`, { body: { note } }).then((r) => r.data);
   }
 
-  deleteDraftNote(mr: MergeRequest, id: number) {
+  deleteDraftNote(mr: MrRef, id: number) {
     return this.request<void>('DELETE', `${this.mrPath(mr)}/draft_notes/${id}`);
   }
 
-  publishDrafts(mr: MergeRequest) {
+  publishDrafts(mr: MrRef) {
     return this.post<void>(`${this.mrPath(mr)}/draft_notes/bulk_publish`);
   }
 
-  approve(mr: MergeRequest) {
-    // Passing sha makes GitLab reject the approval if new commits landed after we loaded the diff.
-    return this.post<void>(`${this.mrPath(mr)}/approve`, { sha: mr.sha });
+  /** Passing the head sha makes GitLab reject the approval if new commits landed after we loaded the diff. */
+  approve(mr: MrRef, sha: string) {
+    return this.post<void>(`${this.mrPath(mr)}/approve`, { sha });
   }
 }

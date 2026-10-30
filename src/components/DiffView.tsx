@@ -1,13 +1,13 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { EXPAND_STEP, hunkGap, isCommentable, type DiffLine, type ExpandMode } from '../diff';
-import type { DraftNote } from '../gitlab';
+import type { Draft } from '../review';
 import { languageFor, renderDiff } from '../highlight';
 
 type Props = {
   path: string;
   lines: DiffLine[];
-  notesFor: (line: DiffLine) => DraftNote[];
-  onDeleteNote: (note: DraftNote) => void;
+  notesFor: (line: DiffLine) => Draft[];
+  onDeleteNote: (note: Draft) => void;
   /** Line-picking mode: dragging a finger highlights lines, releasing picks one. */
   picking: boolean;
   onPick: (index: number) => void;
@@ -16,11 +16,13 @@ type Props = {
   /** Reveal hidden lines above the hunk header at `index`, or after the end of the diff. */
   onExpand: (index: number | 'end', mode: ExpandMode) => void;
   canExpandEnd: boolean;
+  /** Whether revealed context lines can take comments (GitHub only allows lines of the diff). */
+  canCommentOnContext: boolean;
 };
 
 const EDGE = 56; // px from the top/bottom edge where dragging auto-scrolls
 
-export function DiffView({ path, lines, notesFor, onDeleteNote, picking, onPick, highlight, onExpand, canExpandEnd }: Props) {
+export function DiffView({ path, lines, notesFor, onDeleteNote, picking, onPick, highlight, onExpand, canExpandEnd, canCommentOnContext }: Props) {
   const scroller = useRef<HTMLDivElement>(null);
   const pointer = useRef<{ x: number; y: number } | null>(null);
   const hoverRef = useRef<number | null>(null);
@@ -105,7 +107,7 @@ export function DiffView({ path, lines, notesFor, onDeleteNote, picking, onPick,
                 <code>{activeLine.text.trim() || ' '}</code>
               </>
             ) : (
-              <span>Przeciągnij palcem po liniach, puść na tej do komentarza</span>
+              <span>Dotknij linii albo przeciągnij palcem</span>
             )}
           </div>
         </div>
@@ -121,7 +123,7 @@ export function DiffView({ path, lines, notesFor, onDeleteNote, picking, onPick,
           ) : (
           <Fragment key={i}>
             <div
-              data-line={isCommentable(l) ? i : undefined}
+              data-line={isCommentable(l) && (canCommentOnContext || !l.expanded) ? i : undefined}
               className={`diff-line ${l.type}${active === i ? ' active' : ''}`}
             >
               {rendered[i] ? (
@@ -169,7 +171,7 @@ function HunkHeader({ line, gap, onExpand }: { line: DiffLine; gap: { from: numb
   );
 }
 
-export function InlineNote({ note, onDelete }: { note: DraftNote; onDelete: () => void }) {
+export function InlineNote({ note, onDelete }: { note: Draft; onDelete: () => void }) {
   return (
     <div className="inline-note">
       <div className="inline-note-head">
@@ -178,7 +180,7 @@ export function InlineNote({ note, onDelete }: { note: DraftNote; onDelete: () =
           usuń
         </button>
       </div>
-      <div className="note">{note.note}</div>
+      <div className="note">{note.body}</div>
     </div>
   );
 }

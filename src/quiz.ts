@@ -1,4 +1,4 @@
-import type { FileDiff, MergeRequest } from './gitlab';
+import type { FileDiff, Review } from './review';
 
 export type QuizQuestion = { question: string; options: string[]; correct_index: number; explanation: string };
 
@@ -14,18 +14,18 @@ Zasady:
 - explanation: 1-2 zdania, dlaczego odpowiedź jest poprawna, z odwołaniem do konkretnego miejsca w kodzie.
 - Pisz po polsku, nazwy z kodu zostaw w oryginale.`;
 
-function describeChanges(changes: { mr: MergeRequest; files: FileDiff[] }[]) {
+function describeChanges(changes: Changes) {
   return changes
-    .map(({ mr, files }) => {
+    .map(({ review, files }) => {
       const diffs = files
         .map((f) => `--- ${f.old_path}\n+++ ${f.new_path}\n${f.diff || '(brak diffu tekstowego)'}`)
         .join('\n\n');
-      return `<merge_request ref="${mr.references.full}">\nTytuł: ${mr.title}\nOpis:\n${mr.description || '(brak)'}\n\n${diffs}\n</merge_request>`;
+      return `<merge_request ref="${review.ref}">\nTytuł: ${review.title}\nOpis:\n${review.description || '(brak)'}\n\n${diffs}\n</merge_request>`;
     })
     .join('\n\n');
 }
 
-type Changes = { mr: MergeRequest; files: FileDiff[] }[];
+export type Changes = { review: Review; files: FileDiff[] }[];
 
 const GEMINI_MODEL = 'gemini-3.8-flash';
 
