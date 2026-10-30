@@ -997,3 +997,109 @@ button.primary.saved {
 .settings-section .row {
   align-items: center;
 }
+
+/* ---- Flow order: label on the card and the map sheet ---- */
+.flow-from {
+  background: none;
+  padding: 0;
+  text-align: left;
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sheet.flow-map {
+  max-height: 85dvh;
+}
+.flow-map-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.segmented {
+  display: flex;
+  background: var(--surface-2);
+  border-radius: 9px;
+  padding: 3px;
+}
+.segmented button {
+  background: none;
+  padding: 4px 10px;
+  font-size: 12px;
+  border-radius: 7px;
+  color: var(--muted);
+}
+.segmented button.on {
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 600;
+}
+.flow-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.flow-row {
+  width: 100%;
+  background: none;
+  border-radius: 8px;
+  padding: 6px 8px;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.flow-row.current {
+  background: var(--surface-2);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.flow-row-main {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+.flow-check {
+  font-size: 11px;
+  color: var(--muted);
+  min-width: 14px;
+}
+.flow-row.viewed .flow-check {
+  color: var(--ok);
+}
+.flow-row.viewed .flow-name {
+  color: var(--muted);
+}
+.flow-name {
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.flow-sub {
+  font-size: 11px;
+  color: var(--muted);
+  padding-left: 20px;
+  overflow-wrap: anywhere;
+}
+.next-review {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.next-review .meta {
+  color: inherit;
+  opacity: 0.85;
+  font-weight: 400;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

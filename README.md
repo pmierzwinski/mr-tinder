@@ -34,6 +34,14 @@ MR/PR-y są grupowane po kluczu Jiry (np. `ABC-123`) z tytułu lub brancha — t
 Task przeglądasz jako jedną talię i na końcu możesz zrobić „Approve wszystkie”.
 W zakładce „Repozytoria” przy MR jest „+ MR z tym samym branchem w innych repo”.
 
+## Kolejność przepływu
+
+Pliki są domyślnie ułożone wzdłuż przepływu kodu: plik, który w zmienionych liniach woła metodę albo używa klasy,
+jest przed plikiem z jej definicją (od punktu wejścia w dół), potem pliki bez powiązań, testy na końcu.
+To zgadywanie z nazw (bez kompilatora), więc wywołania przez interfejsy, eventy czy refleksję mogą umknąć.
+🗺 w talii pokazuje mapę (drzewo wywołań, skok do pliku, przełącznik „Przepływ / Pliki”), a z kluczem Gemini
+można poprosić AI o kolejność z krótkim opisem roli każdego pliku (zapamiętywaną do następnego pusha).
+
 ## Ograniczenia
 
 - Checkbox „Viewed” w GitLabie jest trzymany tylko w przeglądarce (nie ma API), więc stan „obejrzane” jest lokalny.

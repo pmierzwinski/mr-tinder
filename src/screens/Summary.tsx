@@ -2,7 +2,7 @@ import { useMemo, useState, type Dispatch, type SetStateAction } from 'react';
 import { QuizView } from '../components/QuizView';
 import { providerFor, type Draft, type Providers, type Review } from '../review';
 import { isViewed, loadAiKey } from '../storage';
-import type { Card } from './Deck';
+import type { Card, NextReview } from './Deck';
 
 type Props = {
   providers: Providers;
@@ -12,6 +12,7 @@ type Props = {
   setDrafts: Dispatch<SetStateAction<Record<string, Draft[]>>>;
   exitLabel: string;
   onExit: () => void;
+  next?: NextReview;
   onRestart: () => void;
 };
 
@@ -24,7 +25,7 @@ const DONE: Record<Outcome, string> = {
   approve: 'Zatwierdzone ✓',
 };
 
-export function Summary({ providers, reviews, cards, drafts, setDrafts, exitLabel, onExit, onRestart }: Props) {
+export function Summary({ providers, reviews, cards, drafts, setDrafts, exitLabel, onExit, next, onRestart }: Props) {
   const [summaries, setSummaries] = useState<Record<string, string>>({});
   const [status, setStatus] = useState<Record<string, Status>>({});
   const [aiKey] = useState(loadAiKey);
@@ -81,6 +82,7 @@ export function Summary({ providers, reviews, cards, drafts, setDrafts, exitLabe
         const viewed = files.filter((c) => isViewed(c.review, c.file.new_path, c.hash)).length;
         const notes = drafts[key] ?? [];
         const s = status[key] ?? {};
+        const hasComments = notes.length > 0 || !!summaries[key]?.trim();
         return (
           <div key={key} className="summary-mr">
             <div className="meta">{review.ref}</div>
@@ -113,12 +115,20 @@ export function Summary({ providers, reviews, cards, drafts, setDrafts, exitLabe
               <div className="done">{s.done}</div>
             ) : (
               <div className="review-actions">
-                <button className="primary" disabled={s.busy} onClick={() => run(review, 'approve')}>
-                  ✓ Approve
-                </button>
-                <button className="secondary" disabled={s.busy || !(drafts[key]?.length || summaries[key]?.trim())} onClick={() => run(review, 'comment')}>
-                  Wyślij komentarze bez approve
-                </button>
+                {hasComments ? (
+                  <>
+                    <button className="primary" disabled={s.busy} onClick={() => run(review, 'comment')}>
+                      Wyślij komentarze
+                    </button>
+                    <button className="secondary" disabled={s.busy} onClick={() => run(review, 'approve')}>
+                      Wyślij komentarze i approve
+                    </button>
+                  </>
+                ) : (
+                  <button className="primary" disabled={s.busy} onClick={() => run(review, 'approve')}>
+                    ✓ Approve
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -128,6 +138,12 @@ export function Summary({ providers, reviews, cards, drafts, setDrafts, exitLabe
       {reviews.length > 1 && (
         <button className="primary wide" onClick={() => reviews.filter((r) => !status[r.id]?.done).forEach((r) => run(r, 'approve'))}>
           Approve wszystkie ({reviews.length})
+        </button>
+      )}
+
+      {next && reviews.every((r) => status[r.id]?.done) && (
+        <button className="primary wide next-review" onClick={next.open}>
+          Następny MR z {next.taskKey} →<span className="meta">{next.review.ref} · {next.review.title}</span>
         </button>
       )}
 

@@ -15,7 +15,7 @@ export function QuizView({ apiKey, changes, onClose }: Props) {
     let cancelled = false;
     setQuestions(null);
     setError(null);
-    // The Anthropic SDK is loaded only when a quiz is requested, keeping the app's first load small.
+    // The quiz code is loaded only when a quiz is requested, keeping the app's first load small.
     import('../quiz')
       .then(({ generateQuiz }) => generateQuiz(apiKey, changes))
       .then(

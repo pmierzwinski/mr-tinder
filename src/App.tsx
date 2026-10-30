@@ -9,7 +9,7 @@ import { addRecent, loadAccounts, saveAccounts } from './storage';
 
 export function App() {
   const [accounts, setAccounts] = useState<Account[]>(loadAccounts);
-  const [deck, setDeck] = useState<{ reviews: Review[]; taskKey?: string } | null>(null);
+  const [deck, setDeck] = useState<{ reviews: Review[]; taskKey?: string; queue: Review[] } | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const providers = useMemo(() => createProviders(accounts), [accounts]);
 
@@ -20,26 +20,40 @@ export function App() {
     if (!next.length) setSettingsOpen(false);
   };
 
-  // Make the phone's back gesture leave the deck instead of the app.
+  const openDeck = (reviews: Review[], taskKey?: string, queue: Review[] = []) => {
+    addRecent(reviews);
+    setDeck({ reviews, taskKey, queue });
+  };
+
+  // Make the phone's back gesture leave the deck instead of the app. Moving on to the next review
+  // of a task keeps the same history entry, so one back still returns to the list.
+  const inDeck = !!deck;
   useEffect(() => {
-    if (!deck) return;
+    if (!inDeck) return;
     history.pushState({ deck: true }, '');
     const onPop = () => setDeck(null);
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
-  }, [deck]);
+  }, [inDeck]);
 
   if (!accounts.length) {
     return <Welcome onConnected={(account) => updateAccounts([account])} />;
   }
 
   if (deck) {
+    const [nextReview, ...rest] = deck.queue;
     return (
       <Deck
+        key={deck.reviews.map((r) => r.id).join(',')}
         providers={providers}
         reviews={deck.reviews}
         exitLabel={deck.taskKey ? `Wróć do ${deck.taskKey}` : 'Lista MR'}
         onExit={() => history.back()}
+        next={
+          nextReview && deck.taskKey
+            ? { review: nextReview, taskKey: deck.taskKey, open: () => openDeck([nextReview], deck.taskKey, rest) }
+            : undefined
+        }
       />
     );
   }
@@ -61,10 +75,7 @@ export function App() {
       </header>
       <Inbox
         providers={providers}
-        onOpen={(reviews, taskKey) => {
-          addRecent(reviews);
-          setDeck({ reviews, taskKey });
-        }}
+        onOpen={openDeck}
       />
     </>
   );

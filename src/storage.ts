@@ -1,3 +1,4 @@
+import type { AiStep } from './flow';
 import type { Account } from './providers';
 import type { Draft, Review } from './review';
 
@@ -63,6 +64,29 @@ export const saveAiKey = (key: string) => writeJson(AI_KEY, key);
 const SMALL_CODE_KEY = 'mr-tinder:small-code';
 export const loadSmallCode = () => readJson<boolean>(SMALL_CODE_KEY) ?? false;
 export const saveSmallCode = (on: boolean) => writeJson(SMALL_CODE_KEY, on);
+
+// Card order in the deck: following the code flow (default) or the files as GitLab/GitHub list them.
+export type CardOrder = 'flow' | 'files';
+const ORDER_KEY = 'mr-tinder:card-order';
+export const loadCardOrder = (): CardOrder => (readJson<CardOrder>(ORDER_KEY) === 'files' ? 'files' : 'flow');
+export const saveCardOrder = (order: CardOrder) => writeJson(ORDER_KEY, order);
+
+// Reading order suggested by Gemini, per set of reviews at their current commits (a new push asks again).
+const aiFlowKey = (reviews: Review[]) =>
+  `mr-tinder:ai-flow:${reviews
+    .map((r) => `${r.id}@${r.headSha}`)
+    .sort()
+    .join(',')}`;
+export const loadAiFlow = (reviews: Review[]) => readJson<AiStep[]>(aiFlowKey(reviews));
+export function saveAiFlow(reviews: Review[], steps: AiStep[] | null) {
+  if (steps) writeJson(aiFlowKey(reviews), steps);
+  else
+    try {
+      localStorage.removeItem(aiFlowKey(reviews));
+    } catch {
+      /* storage unavailable */
+    }
+}
 
 /** Accepts "gitlab.example.com", "https://gitlab.example.com/" etc. */
 export function normalizeUrl(input: string) {

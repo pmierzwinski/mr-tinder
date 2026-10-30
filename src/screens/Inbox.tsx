@@ -12,8 +12,11 @@ import {
 import { loadRecent } from '../storage';
 import { loadInbox, MERGED_DAYS, type InboxData, type TaskGroup } from '../tasks';
 
-/** `taskKey` is set when the reviews were opened from a task, so the review can lead back to it. */
-type Props = { providers: Providers; onOpen: (reviews: Review[], taskKey?: string) => void };
+/**
+ * `taskKey` is set when the reviews were opened from a task, so the review can lead back to it.
+ * `queue` holds the task's other reviews still to do, in the order to offer them next.
+ */
+type Props = { providers: Providers; onOpen: (reviews: Review[], taskKey?: string, queue?: Review[]) => void };
 
 type Tab = 'review' | 'recent' | 'repos';
 
@@ -182,7 +185,13 @@ function ReviewInbox({ providers, onOpen }: Props) {
         </button>
       </div>
       {open === g.key &&
-        g.reviews.map((r) => <ReviewRow key={r.id} review={r} status={statuses.get(r.id)} onClick={() => onOpen([r], g.key)} />)}
+        g.reviews.map((r, i) => {
+          // The ones after this review first, then wrap around to the ones before it.
+          const queue = [...g.reviews.slice(i + 1), ...g.reviews.slice(0, i)].filter(
+            (o) => o.state !== 'merged' && !statuses.get(o.id)?.done,
+          );
+          return <ReviewRow key={r.id} review={r} status={statuses.get(r.id)} onClick={() => onOpen([r], g.key, queue)} />;
+        })}
     </div>
   );
 
