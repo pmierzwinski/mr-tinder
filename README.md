@@ -5,7 +5,7 @@ Code review na telefonie dla GitLaba i GitHuba: jedna karta = jeden plik z MR/PR
 - **w prawo** → plik obejrzany (następna karta)
 - **w lewo** → tryb wyboru linii: dotknij linii albo przeciągnij palcem po diffie (przy krawędzi przewija) → komentarz.
   Komentarze w drafcie widać pod linią, można je edytować i usuwać.
-- na końcu: **Approve** albo **Wyślij komentarze bez approve**, opcjonalnie quiz ze zmian (Gemini)
+- na końcu: **Approve**, a gdy są komentarze **Wyślij komentarze** albo **Wyślij komentarze i approve**; opcjonalnie quiz ze zmian (Claude)
 
 ## Start
 
@@ -39,7 +39,7 @@ W zakładce „Repozytoria” przy MR jest „+ MR z tym samym branchem w innych
 Pliki są domyślnie ułożone wzdłuż przepływu kodu: plik, który w zmienionych liniach woła metodę albo używa klasy,
 jest przed plikiem z jej definicją (od punktu wejścia w dół), potem pliki bez powiązań, testy na końcu.
 To zgadywanie z nazw (bez kompilatora), więc wywołania przez interfejsy, eventy czy refleksję mogą umknąć.
-🗺 w talii pokazuje mapę (drzewo wywołań, skok do pliku, przełącznik „Przepływ / Pliki”), a z kluczem Gemini
+🗺 w talii pokazuje mapę (drzewo wywołań, skok do pliku, przełącznik „Przepływ / Pliki”), a z kluczem API Claude
 można poprosić AI o kolejność z krótkim opisem roli każdego pliku (zapamiętywaną do następnego pusha).
 
 ## Ograniczenia

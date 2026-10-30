@@ -55,8 +55,9 @@ const githubDraftsKey = (reviewId: string) => `mr-tinder:github-drafts:${reviewI
 export const loadGithubDrafts = (reviewId: string) => readJson<Draft[]>(githubDraftsKey(reviewId)) ?? [];
 export const saveGithubDrafts = (reviewId: string, drafts: Draft[]) => writeJson(githubDraftsKey(reviewId), drafts);
 
-// Gemini API key for generating review quizzes; stays on this device only.
-const AI_KEY = 'mr-tinder:ai-key';
+// Claude (Anthropic) API key for the quiz and the AI file order; stays on this device only.
+// It has its own key: the old "ai-key" held a Gemini key, which Anthropic would reject.
+const AI_KEY = 'mr-tinder:anthropic-key';
 export const loadAiKey = () => readJson<string>(AI_KEY) ?? '';
 export const saveAiKey = (key: string) => writeJson(AI_KEY, key);
 
@@ -71,9 +72,9 @@ const ORDER_KEY = 'mr-tinder:card-order';
 export const loadCardOrder = (): CardOrder => (readJson<CardOrder>(ORDER_KEY) === 'files' ? 'files' : 'flow');
 export const saveCardOrder = (order: CardOrder) => writeJson(ORDER_KEY, order);
 
-// Reading order suggested by Gemini, per set of reviews at their current commits (a new push asks again).
+// Reading order suggested by Claude, per set of reviews at their current commits (a new push asks again).
 const aiFlowKey = (reviews: Review[]) =>
-  `mr-tinder:ai-flow:${reviews
+  `mr-tinder:claude-flow:${reviews
     .map((r) => `${r.id}@${r.headSha}`)
     .sort()
     .join(',')}`;

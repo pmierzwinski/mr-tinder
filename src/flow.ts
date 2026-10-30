@@ -1,5 +1,4 @@
 import type { DiffLine } from './diff';
-import { askGemini, describeChanges, type Changes } from './gemini';
 
 /**
  * Where a file sits in the reading order: its depth in the call tree and the changed file
@@ -140,57 +139,7 @@ export function flowOrder(files: FlowFile[]): { index: number; flow: FlowInfo }[
   return out;
 }
 
-// ---- AI order (Gemini) ----
-
+/** Files ordered by the AI, keyed with `fileKey`, each with a one-sentence note. */
 export type AiStep = { key: string; note: string };
 
-const SYSTEM = `Jesteś doświadczonym reviewerem kodu. Dostajesz merge requesty (opis i diffy plików).
-Ułóż WSZYSTKIE zmienione pliki w kolejności, w jakiej najłatwiej zrozumieć zmianę, czytając kod krok po kroku wzdłuż przepływu wykonania:
-od punktu wejścia (np. handler, kontroler, UI, event) przez kolejne wywoływane metody aż do warstw najniższych (repozytoria, modele, konfiguracja).
-Plik, który wywołuje metodę, ma być przed plikiem z jej definicją. Testy i pliki pomocnicze na końcu.
-
-Dla każdego pliku podaj:
-- ref: referencja merge requesta z atrybutu ref,
-- path: ścieżka pliku dokładnie jak po "+++ " (dla usuniętych plików jak po "--- "),
-- note: jedno krótkie zdanie po polsku, co ten plik robi w tym przepływie (nazwy z kodu zostaw w oryginale).`;
-
-const SCHEMA = {
-  type: 'OBJECT',
-  properties: {
-    steps: {
-      type: 'ARRAY',
-      items: {
-        type: 'OBJECT',
-        properties: { ref: { type: 'STRING' }, path: { type: 'STRING' }, note: { type: 'STRING' } },
-        required: ['ref', 'path', 'note'],
-      },
-    },
-  },
-  required: ['steps'],
-};
-
 export const fileKey = (reviewId: string, path: string) => `${reviewId}:${path}`;
-
-/** Asks Gemini for the reading order; returns the steps it named that match real files, in its order. */
-export async function generateFlow(apiKey: string, changes: Changes): Promise<AiStep[]> {
-  const json = await askGemini(apiKey, SYSTEM, describeChanges(changes), SCHEMA);
-  const steps = (json as { steps?: unknown } | null)?.steps;
-  const out: AiStep[] = [];
-  const seen = new Set<string>();
-  for (const s of Array.isArray(steps) ? steps : []) {
-    const { ref, path, note } = (s ?? {}) as Record<string, unknown>;
-    if (typeof path !== 'string') continue;
-    // Prefer the named MR; fall back to the path alone when the model mixed up the ref.
-    const matches = changes.flatMap(({ review, files }) =>
-      files.filter((f) => f.new_path === path || f.old_path === path).map((f) => ({ review, f })),
-    );
-    const match = matches.find((m) => m.review.ref === ref) ?? (matches.length === 1 ? matches[0] : undefined);
-    if (!match) continue;
-    const key = fileKey(match.review.id, match.f.new_path);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push({ key, note: typeof note === 'string' ? note : '' });
-  }
-  if (!out.length) throw new Error('Nie udało się odczytać kolejności z odpowiedzi modelu.');
-  return out;
-}
