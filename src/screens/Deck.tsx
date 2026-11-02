@@ -113,6 +113,16 @@ export function Deck({ providers, reviews: requested, exitLabel, onExit, next: n
     else setCommentAt(null);
   }, [card, setPicking]);
 
+  // Moving between files without marking anything, to skim through the review quickly.
+  const go = useCallback(
+    (step: number) => {
+      if (!cards) return;
+      setPicking(false);
+      setIndex((i) => Math.min(Math.max(i + step, 0), cards.length));
+    },
+    [cards, setPicking],
+  );
+
   const undo = () => {
     if (!cards || index === 0) return;
     const prev = cards[index - 1];
@@ -126,12 +136,14 @@ export function Deck({ providers, reviews: requested, exitLabel, onExit, next: n
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setPicking(false);
       else if (picking) return;
+      else if (e.key === 'ArrowRight' && e.shiftKey) go(1);
+      else if (e.key === 'ArrowLeft' && e.shiftKey) go(-1);
       else if (e.key === 'ArrowRight') next();
       else if (e.key === 'ArrowLeft') startComment();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [card, commenting, picking, next, startComment, setPicking]);
+  }, [card, commenting, picking, next, startComment, setPicking, go]);
 
   const fileDrafts = useMemo(() => (card ? draftsForFile(drafts[card.review.id] ?? [], card.file) : []), [card, drafts]);
 
@@ -169,6 +181,7 @@ export function Deck({ providers, reviews: requested, exitLabel, onExit, next: n
   const provider = providerFor(providers, review);
   // Expanded context only adds unchanged lines, so these counts stay those of the diff.
   const { added, removed } = diffStats(card.lines);
+  const viewed = isViewed(review, file.new_path, card.hash);
 
   const addComment = async (text: string) => {
     const note = await provider.addDraft(review, file, commentLine, text);
@@ -279,8 +292,9 @@ export function Deck({ providers, reviews: requested, exitLabel, onExit, next: n
                 (<span className="minus">−{removed}</span> <span className="plus">+{added}</span>)
               </span>
             </div>
-            {(file.new_file || file.deleted_file || fileDrafts.length > 0) && (
+            {(file.new_file || file.deleted_file || fileDrafts.length > 0 || viewed) && (
               <div className="meta">
+                {viewed && <span className="badge ok">✓ obejrzany</span>}
                 {file.new_file && <span className="badge add">nowy</span>}
                 {file.deleted_file && <span className="badge del">usunięty</span>}
                 {fileDrafts.length > 0 && <span className="badge">💬 {fileDrafts.length}</span>}
@@ -334,6 +348,9 @@ export function Deck({ providers, reviews: requested, exitLabel, onExit, next: n
         </div>
       ) : (
         <div className="actions">
+          <button className="round nav" onClick={() => go(-1)} disabled={index === 0} title="Poprzedni plik (Shift+←)">
+            ‹
+          </button>
           <button className="round" onClick={undo} disabled={index === 0} title="Cofnij">
             ↶
           </button>
@@ -342,6 +359,9 @@ export function Deck({ providers, reviews: requested, exitLabel, onExit, next: n
           </button>
           <button className="round ok" onClick={next} title="Viewed (→)">
             ✓
+          </button>
+          <button className="round nav" onClick={() => go(1)} title="Następny plik bez oznaczania (Shift+→)">
+            ›
           </button>
         </div>
       )}

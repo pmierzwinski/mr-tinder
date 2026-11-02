@@ -5,6 +5,7 @@ Code review na telefonie dla GitLaba i GitHuba: jedna karta = jeden plik z MR/PR
 - **w prawo** → plik obejrzany (następna karta)
 - **w lewo** → tryb wyboru linii: dotknij linii albo przeciągnij palcem po diffie (przy krawędzi przewija) → komentarz.
   Komentarze w drafcie widać pod linią, można je edytować i usuwać.
+- **‹ ›** → poprzedni / następny plik bez oznaczania (na klawiaturze Shift+← / Shift+→); obejrzane pliki mają znaczek „✓ obejrzany”
 - na końcu: **Approve**, a gdy są komentarze **Wyślij komentarze** albo **Wyślij komentarze i approve**
 
 ## Start

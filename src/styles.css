@@ -157,7 +157,8 @@ code {
   font-size: 12px;
   color: var(--text);
 }
-.badge.add {
+.badge.add,
+.badge.ok {
   color: var(--ok);
 }
 .badge.del {
@@ -620,7 +621,8 @@ code {
 .actions {
   display: flex;
   justify-content: center;
-  gap: 24px;
+  align-items: center;
+  gap: 16px;
   padding-bottom: 4px;
 }
 .round {
@@ -634,6 +636,17 @@ code {
   background: var(--ok);
   color: #04261b;
   box-shadow: 0 4px 16px rgba(34, 211, 160, 0.35);
+}
+.round.nav {
+  width: 40px;
+  height: 40px;
+  font-size: 26px;
+  line-height: 1;
+  background: transparent;
+  border: 1px solid var(--border);
+}
+.round:disabled {
+  opacity: 0.35;
 }
 .round.comment {
   background: var(--warn);
