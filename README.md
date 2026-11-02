@@ -31,6 +31,9 @@ Jednorazowo: Settings → Pages → Source: **GitHub Actions**.
 ## Taski (feature w kilku repo)
 
 MR/PR-y są grupowane po kluczu Jiry (np. `ABC-123`) z tytułu lub brancha — także między GitLabem a GitHubem.
+Klucz Jiry ma zawsze pierwszeństwo i jest szukany w tytule, potem w branchu, potem w opisie MR. Dla znanych projektów
+(dopisują się same, gdy pojawi się klucz w postaci `WOH-5`, albo ręcznie w ⚙︎ → „Projekty Jiry”) znajdzie go zapisany
+dowolnie: `woh-5`, `WOH_5`, `woh 5`, `[WOH5]`.
 Bez klucza Jiry grupuje część tytułu przed pierwszym `:` lub `/`: „Task abc: doing something” i „Task abc/ UI” to jeden task,
 a „Zadanie 1” i „Zadanie 1 part 2” to osobne MR. Pomijane są przedrostki `Draft:` / `WIP:`, autor w stylu
 `imie.nazwisko/` (kropka, bez spacji) oraz typy zmian (`fix:`, `feat(ui):`, `chore:` …), które niczego nie grupują.

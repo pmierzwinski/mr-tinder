@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ConnectSheet } from '../components/ConnectSheet';
 import type { Account } from '../providers';
 import { PROVIDER_LABEL, type ProviderKind, type Providers, type Repo, type ReviewProvider } from '../review';
+import { jiraProjects, setJiraProjects } from '../tasks';
 import { loadIgnore, saveIgnore, type IgnoreRules } from '../ignore';
 import { loadWatched, saveWatched } from '../storage';
 
@@ -68,6 +69,8 @@ export function Settings({ accounts, providers, onAccountsChange, onClose }: Pro
       <WatchedRepos providers={providers} />
 
       <IgnoreSettings />
+
+      <JiraSettings />
 
       {connecting && (
         <ConnectSheet
@@ -211,6 +214,30 @@ function IgnoreSettings() {
           }}
         />
       </label>
+    </section>
+  );
+}
+
+/** Jira projects whose keys are found however written ("woh 5", "WOH_5"); filled in automatically as well. */
+function JiraSettings() {
+  const [text, setText] = useState(() => jiraProjects().join(', '));
+  return (
+    <section className="settings-section">
+      <h3>Projekty Jiry</h3>
+      <p className="hint small">
+        Klucz ticketu (np. <code>WOH-5</code>) ma pierwszeństwo przy grupowaniu. Dla tych projektów znajdzie go w tytule, branchu
+        albo opisie MR zapisany dowolnie: <code>woh-5</code>, <code>WOH_5</code>, <code>woh 5</code>, <code>[WOH5]</code>. Projekty
+        dopisują się same, gdy gdzieś pojawi się klucz w postaci <code>WOH-5</code>.
+      </p>
+      <input
+        className="search"
+        placeholder="WOH, ABC"
+        value={text}
+        onChange={(e) => {
+          setText(e.target.value);
+          setJiraProjects(e.target.value.split(/[\s,;]+/));
+        }}
+      />
     </section>
   );
 }

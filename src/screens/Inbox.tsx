@@ -9,7 +9,7 @@ import {
   type Review,
 } from '../review';
 import { loadRecent, loadWatched, reviewedSha } from '../storage';
-import { loadInbox, taskKey, MERGED_DAYS, type InboxData, type TaskGroup } from '../tasks';
+import { learnJiraProjects, loadInbox, taskKey, MERGED_DAYS, type InboxData, type TaskGroup } from '../tasks';
 
 /**
  * `taskKey` is set when the reviews were opened from a task, so the review can lead back to it.
@@ -253,6 +253,7 @@ function TaskCard({ task: g, statuses, expanded, onToggle, onOpen }: TaskCardPro
 
 /** Feed items: reviews sharing a task key become one task, placed where its most recently updated review would be. */
 function groupFeed(reviews: Review[]): InboxItem[] {
+  learnJiraProjects(reviews);
   const keyOf = (r: Review) => taskKey(r)?.toLowerCase() ?? `review:${r.id}`;
   const byKey = new Map<string, Review[]>();
   for (const r of reviews) byKey.set(keyOf(r), [...(byKey.get(keyOf(r)) ?? []), r]);

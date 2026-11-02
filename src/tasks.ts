@@ -1,16 +1,70 @@
+import { loadJiraProjects, saveJiraProjects } from './storage';
 import { PROVIDER_LABEL, type ProviderKind, type Providers, type Review, type ReviewProvider } from './review';
 
 export type TaskGroup = { key: string; reviews: Review[] };
 
 export const MERGED_DAYS = 7;
 
-// Titles use upper case ("WOH-123: Fix…"); branches are often lower case ("feature/woh-123-fix").
-const KEY_IN_TITLE = /\b([A-Z][A-Z0-9]{1,9}-\d+)\b/;
-const KEY_IN_BRANCH = /(?:^|\/)([a-z][a-z0-9]{1,9}-\d+)(?=$|[^0-9])/i;
+// Unambiguous ticket keys: upper case in titles and descriptions ("WOH-123: Fix…", ".../browse/WOH-123"),
+// any case right after a "/" in branches ("feature/woh-123-fix").
+const STRICT_TEXT = /(?<![A-Za-z0-9])([A-Z][A-Z0-9]{1,9})-(\d+)(?![0-9])/g;
+const STRICT_BRANCH = /(?:^|\/)([a-z][a-z0-9]{1,9})-(\d+)(?=$|[^0-9])/gi;
+// Prefixes that look like keys but aren't Jira projects ("UTF-8", "SHA-256", branches like "fix-2", "release-3").
+const NOT_PROJECTS = new Set([
+  ...['UTF', 'SHA', 'MD', 'ISO', 'RFC', 'HTTP', 'TLS', 'SSL', 'IPV', 'X', 'V', 'VER', 'VERSION'],
+  ...['FIX', 'BUGFIX', 'HOTFIX', 'FEAT', 'FEATURE', 'RELEASE', 'PART', 'STEP', 'PHASE', 'ROUND', 'TRY', 'ATTEMPT', 'BUILD', 'WIP'],
+]);
 
+/** Jira projects seen so far (and added in the settings): once known, their keys are found however written. */
+let projects = new Set(loadJiraProjects());
+let looseKey: RegExp | null = null;
+
+/** Remembers the projects of the unambiguous keys in these titles and branches (descriptions mention too much), so "woh 5" or "WOH_5" elsewhere is found too. */
+export function learnJiraProjects(reviews: Review[]) {
+  const found = new Set(projects);
+  for (const r of reviews) {
+    for (const [text, re] of [[r.title, STRICT_TEXT], [r.sourceBranch, STRICT_BRANCH]] as const) {
+      for (const m of text.matchAll(re)) if (!NOT_PROJECTS.has(m[1].toUpperCase())) found.add(m[1].toUpperCase());
+    }
+  }
+  if (found.size !== projects.size) {
+    projects = found;
+    looseKey = null;
+    saveJiraProjects([...found]);
+  }
+}
+
+export const jiraProjects = () => [...projects];
+
+export function setJiraProjects(list: string[]) {
+  projects = new Set(list.map((p) => p.trim().toUpperCase()).filter(Boolean));
+  looseKey = null;
+  saveJiraProjects([...projects]);
+}
+
+/** "WOH-5", "woh-5", "WOH_5", "woh 5", "[WOH5]" — for the known projects, anywhere in the text. */
+function loose() {
+  if (!projects.size) return null;
+  looseKey ??= new RegExp(`(?<![A-Za-z0-9])(${[...projects].join('|')})[\\s_-]?(\\d+)(?![0-9])`, 'i');
+  return looseKey;
+}
+
+function keyIn(text: string | undefined, re: RegExp | null) {
+  if (!text || !re) return null;
+  const m = new RegExp(re.source, re.flags.replace('g', '')).exec(text);
+  return m && !NOT_PROJECTS.has(m[1].toUpperCase()) ? `${m[1].toUpperCase()}-${Number(m[2])}` : null;
+}
+
+/** The ticket of the review: from the title first, then the branch, then the description. */
 export function jiraKey(r: Review): string | null {
-  const key = KEY_IN_TITLE.exec(r.title)?.[1] ?? KEY_IN_BRANCH.exec(r.sourceBranch)?.[1];
-  return key?.toUpperCase() ?? null;
+  return (
+    keyIn(r.title, STRICT_TEXT) ??
+    keyIn(r.title, loose()) ??
+    keyIn(r.sourceBranch, STRICT_BRANCH) ??
+    keyIn(r.sourceBranch, loose()) ??
+    keyIn(r.description, STRICT_TEXT) ??
+    keyIn(r.description, loose())
+  );
 }
 
 // GitLab marks unfinished MRs in the title; that's not part of the task name.
@@ -38,8 +92,7 @@ const IS_JIRA_KEY = /^[A-Z][A-Z0-9]{1,9}-\d+$/;
 
 export function belongsTo(r: Review, key: string) {
   if (!IS_JIRA_KEY.test(key)) return titleGroup(r)?.toLowerCase() === key.toLowerCase();
-  const re = new RegExp(`(^|[^A-Za-z0-9])${key}(?![0-9])`, 'i');
-  return re.test(r.title) || re.test(r.sourceBranch);
+  return jiraKey(r) === key;
 }
 
 const unique = (reviews: Review[]) => [...new Map(reviews.map((r) => [r.id, r])).values()];
@@ -71,6 +124,7 @@ export async function loadInbox(providers: Providers): Promise<InboxData> {
   const mine = inboxes.flatMap((i) => i?.mine ?? []);
 
   // Keyed case-insensitively, labelled as first written ("Zadanie 1" and "zadanie 1" are one task).
+  learnJiraProjects([...reviewing, ...mine]);
   const seeds = new Map<string, { key: string; reviews: Review[] }>();
   for (const r of [...reviewing, ...mine]) {
     const key = taskKey(r);

@@ -54,6 +54,11 @@ const githubDraftsKey = (reviewId: string) => `mr-tinder:github-drafts:${reviewI
 export const loadGithubDrafts = (reviewId: string) => readJson<Draft[]>(githubDraftsKey(reviewId)) ?? [];
 export const saveGithubDrafts = (reviewId: string, drafts: Draft[]) => writeJson(githubDraftsKey(reviewId), drafts);
 
+// Jira project keys ("WOH"), learned from reviews or added in the settings.
+const JIRA_KEY = 'mr-tinder:jira-projects';
+export const loadJiraProjects = () => readJson<string[]>(JIRA_KEY) ?? [];
+export const saveJiraProjects = (keys: string[]) => writeJson(JIRA_KEY, keys);
+
 // Repositories whose recent reviews the "Obserwowane" tab shows.
 const WATCHED_KEY = 'mr-tinder:watched-repos';
 export const loadWatched = () => readJson<Repo[]>(WATCHED_KEY) ?? [];
