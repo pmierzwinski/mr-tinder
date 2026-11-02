@@ -996,3 +996,17 @@ button.big {
   font-size: 12px;
   overflow-wrap: anywhere;
 }
+
+.skipped summary {
+  cursor: pointer;
+}
+.skipped ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+.skipped li {
+  overflow-wrap: anywhere;
+}
+.settings-section code {
+  font-size: 12px;
+}

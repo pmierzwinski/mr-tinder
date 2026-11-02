@@ -1,7 +1,7 @@
 import type { Account } from './providers';
 import type { Draft, Repo, Review } from './review';
 
-function readJson<T>(key: string): T | null {
+export function readJson<T>(key: string): T | null {
   try {
     const raw = localStorage.getItem(key);
     return raw ? (JSON.parse(raw) as T) : null;
@@ -10,7 +10,7 @@ function readJson<T>(key: string): T | null {
   }
 }
 
-function writeJson(key: string, value: unknown) {
+export function writeJson(key: string, value: unknown) {
   try {
     localStorage.setItem(key, JSON.stringify(value));
   } catch {

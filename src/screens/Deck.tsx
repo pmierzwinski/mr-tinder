@@ -14,10 +14,12 @@ import {
   type Providers,
   type Review,
 } from '../review';
+import { ignoredBy, loadIgnore } from '../ignore';
 import { hashDiff, isViewed, loadSmallCode, saveSmallCode, setViewed } from '../storage';
 import { Summary } from './Summary';
 
 /** `fileLength` is known once the full file was fetched to expand context. */
+export type Skipped = { review: Review; path: string; rule: string };
 export type Card = { review: Review; file: FileDiff; hash: string; lines: DiffLine[]; fileLength?: number };
 
 /** The task's next review to offer once this one is sent. */
@@ -36,6 +38,8 @@ const firstUnviewed = (cards: Card[]) => {
 export function Deck({ providers, reviews: requested, exitLabel, onExit, next: nextReview }: Props) {
   const [reviews, setReviews] = useState<Review[]>([]);
   const [cards, setCards] = useState<Card[] | null>(null);
+  // Files left out by the ignore rules from the settings, with the rule that matched.
+  const [skipped, setSkipped] = useState<Skipped[]>([]);
   const [drafts, setDrafts] = useState<Record<string, Draft[]>>({});
   const [index, setIndex] = useState(0);
   const [picking, setPickingState] = useState(false);
@@ -65,9 +69,19 @@ export function Deck({ providers, reviews: requested, exitLabel, onExit, next: n
         }),
       );
       if (cancelled) return;
+      const rules = loadIgnore();
+      const left: Skipped[] = [];
       const all: Card[] = loaded.flatMap(({ review, files }) =>
-        files.map((file) => ({ review, file, hash: hashDiff(file.diff), lines: parseDiff(file.diff) })),
+        files.flatMap((file) => {
+          const rule = ignoredBy(file, rules);
+          if (rule) {
+            left.push({ review, path: file.new_path, rule });
+            return [];
+          }
+          return [{ review, file, hash: hashDiff(file.diff), lines: parseDiff(file.diff) }];
+        }),
       );
+      setSkipped(left);
       setReviews(loaded.map((l) => l.review));
       setDrafts(Object.fromEntries(loaded.map((l) => [l.review.id, l.notes])));
       setCards(all);
@@ -139,6 +153,7 @@ export function Deck({ providers, reviews: requested, exitLabel, onExit, next: n
         providers={providers}
         reviews={reviews}
         cards={cards}
+        skipped={skipped}
         drafts={drafts}
         setDrafts={setDrafts}
         exitLabel={exitLabel}

@@ -13,7 +13,20 @@ export function jiraKey(r: Review): string | null {
   return key?.toUpperCase() ?? null;
 }
 
-function mentionsKey(r: Review, key: string) {
+/** Naming convention: the title part before the first "/" ("Zadanie 1/ winman", "Zadanie 1 / UI" → "Zadanie 1"). */
+export function titleGroup(r: Review): string | null {
+  const slash = r.title.indexOf('/');
+  const group = slash > 0 ? r.title.slice(0, slash).trim().replace(/\s+/g, ' ') : '';
+  return group || null;
+}
+
+/** What groups reviews into one task: the Jira key, otherwise the title part before "/". */
+export const taskKey = (r: Review) => jiraKey(r) ?? titleGroup(r);
+
+const IS_JIRA_KEY = /^[A-Z][A-Z0-9]{1,9}-\d+$/;
+
+export function belongsTo(r: Review, key: string) {
+  if (!IS_JIRA_KEY.test(key)) return titleGroup(r)?.toLowerCase() === key.toLowerCase();
   const re = new RegExp(`(^|[^A-Za-z0-9])${key}(?![0-9])`, 'i');
   return re.test(r.title) || re.test(r.sourceBranch);
 }
@@ -46,16 +59,19 @@ export async function loadInbox(providers: Providers): Promise<InboxData> {
   const reviewing = inboxes.flatMap((i) => i?.reviewing ?? []);
   const mine = inboxes.flatMap((i) => i?.mine ?? []);
 
-  const seeds = new Map<string, Review[]>();
+  // Keyed case-insensitively, labelled as first written ("Zadanie 1" and "zadanie 1" are one task).
+  const seeds = new Map<string, { key: string; reviews: Review[] }>();
   for (const r of [...reviewing, ...mine]) {
-    const key = jiraKey(r);
-    if (key) seeds.set(key, [...(seeds.get(key) ?? []), r]);
+    const key = taskKey(r);
+    if (!key) continue;
+    const seed = seeds.get(key.toLowerCase()) ?? { key, reviews: [] };
+    seeds.set(key.toLowerCase(), { ...seed, reviews: [...seed.reviews, r] });
   }
 
   const groups = await Promise.all(
-    [...seeds].map(async ([key, own]) => {
+    [...seeds.values()].map(async ({ key, reviews: own }) => {
       const found = await Promise.all(list.map((p) => p.search(key).catch(() => [])));
-      return { key, reviews: unique([...own, ...found.flat().filter((r) => mentionsKey(r, key))]) };
+      return { key, reviews: unique([...own, ...found.flat().filter((r) => belongsTo(r, key))]) };
     }),
   );
 

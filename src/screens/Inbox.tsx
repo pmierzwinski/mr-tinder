@@ -7,10 +7,9 @@ import {
   type Providers,
   type Repo,
   type Review,
-  type ReviewProvider,
 } from '../review';
 import { loadRecent, loadWatched, reviewedSha } from '../storage';
-import { jiraKey, loadInbox, MERGED_DAYS, type InboxData, type TaskGroup } from '../tasks';
+import { loadInbox, taskKey, MERGED_DAYS, type InboxData, type TaskGroup } from '../tasks';
 
 /**
  * `taskKey` is set when the reviews were opened from a task, so the review can lead back to it.
@@ -252,12 +251,9 @@ function TaskCard({ task: g, statuses, expanded, onToggle, onOpen }: TaskCardPro
   );
 }
 
-/**
- * Feed items: reviews sharing a ticket key (or, without one, a source branch) become one task,
- * placed where its most recently updated review would be.
- */
+/** Feed items: reviews sharing a task key become one task, placed where its most recently updated review would be. */
 function groupFeed(reviews: Review[]): InboxItem[] {
-  const keyOf = (r: Review) => jiraKey(r) ?? `branch:${r.sourceBranch}`;
+  const keyOf = (r: Review) => taskKey(r)?.toLowerCase() ?? `review:${r.id}`;
   const byKey = new Map<string, Review[]>();
   for (const r of reviews) byKey.set(keyOf(r), [...(byKey.get(keyOf(r)) ?? []), r]);
   const items: InboxItem[] = [];
@@ -268,10 +264,7 @@ function groupFeed(reviews: Review[]): InboxItem[] {
     if (group.length === 1) items.push({ kind: 'review', review: r });
     else if (!placed.has(key)) {
       placed.add(key);
-      items.push({
-        kind: 'task',
-        task: { key: key.replace(/^branch:/, ''), reviews: group },
-      });
+      items.push({ kind: 'task', task: { key: taskKey(r)!, reviews: group } });
     }
   }
   return items;
@@ -328,7 +321,6 @@ function WatchedFeed({ providers, onOpen, onOpenSettings }: Props) {
   const [errors, setErrors] = useState<string[]>([]);
   const [open, setOpen] = useState<string | null>(null);
   const statuses = useStatuses(reviews);
-  const list = useMemo(() => Object.values(providers) as ReviewProvider[], [providers]);
 
   useEffect(() => {
     if (!watched.length) return;
@@ -355,12 +347,6 @@ function WatchedFeed({ providers, onOpen, onOpenSettings }: Props) {
       cancelled = true;
     };
   }, [providers, watched, days]);
-
-  const openFeature = async (review: Review) => {
-    const related = await Promise.all(list.map((p) => p.byBranch(review.sourceBranch).catch(() => [])));
-    const found = related.flat();
-    onOpen(found.length ? found : [review]);
-  };
 
   if (!watched.length) {
     return (
@@ -405,23 +391,7 @@ function WatchedFeed({ providers, onOpen, onOpenSettings }: Props) {
         const r = item.review;
         return (
           <ReviewRow key={r.id} review={r} status={statuses.get(r.id)} onClick={() => onOpen([r])}>
-            <div className="meta">
-              Aktualizacja {timeAgo(updatedAt(r))}
-              {r.state === 'open' && (
-                <>
-                  {' · '}
-                  <button
-                    className="link small"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      openFeature(r);
-                    }}
-                  >
-                    + MR z tym samym branchem
-                  </button>
-                </>
-              )}
-            </div>
+            <div className="meta">Aktualizacja {timeAgo(updatedAt(r))}</div>
           </ReviewRow>
         );
       })}

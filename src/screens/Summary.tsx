@@ -1,12 +1,13 @@
 import { useEffect, useState, type Dispatch, type SetStateAction } from 'react';
 import { providerFor, type Draft, type Providers, type Review } from '../review';
 import { isViewed, markReviewed } from '../storage';
-import type { Card, NextReview } from './Deck';
+import type { Card, NextReview, Skipped } from './Deck';
 
 type Props = {
   providers: Providers;
   reviews: Review[];
   cards: Card[];
+  skipped: Skipped[];
   drafts: Record<string, Draft[]>;
   setDrafts: Dispatch<SetStateAction<Record<string, Draft[]>>>;
   exitLabel: string;
@@ -25,7 +26,7 @@ const DONE: Record<Outcome, string> = {
   approve: 'Zatwierdzone ✓',
 };
 
-export function Summary({ providers, reviews, cards, drafts, setDrafts, exitLabel, onExit, next, onRestart }: Props) {
+export function Summary({ providers, reviews, cards, skipped, drafts, setDrafts, exitLabel, onExit, next, onRestart }: Props) {
   const [summaries, setSummaries] = useState<Record<string, string>>({});
   const [status, setStatus] = useState<Record<string, Status>>({});
 
@@ -87,6 +88,7 @@ export function Summary({ providers, reviews, cards, drafts, setDrafts, exitLabe
         const notes = drafts[key] ?? [];
         const s = status[key] ?? {};
         const hasComments = notes.length > 0 || !!summaries[key]?.trim();
+        const left = skipped.filter((s) => s.review.id === key);
         return (
           <div key={key} className="summary-mr">
             <div className="meta">{review.ref}</div>
@@ -96,6 +98,18 @@ export function Summary({ providers, reviews, cards, drafts, setDrafts, exitLabe
             <div className="meta">
               Obejrzane pliki: {viewed}/{files.length} · Komentarze w drafcie: {notes.length}
             </div>
+            {left.length > 0 && (
+              <details className="skipped">
+                <summary className="meta">Pominięte wg reguł z ustawień: {left.length}</summary>
+                <ul>
+                  {left.map((s) => (
+                    <li key={s.path} className="meta">
+                      {s.path} <span className="hint">({s.rule})</span>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
             {notes.length > 0 && (
               <ul className="drafts">
                 {notes.map((n) => (
