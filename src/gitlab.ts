@@ -146,8 +146,13 @@ export class GitLab {
     });
   }
 
-  projectMergeRequests(projectId: number) {
-    return this.getAll<MergeRequest>(`/projects/${projectId}/merge_requests`, { state: 'opened' });
+  /** All MRs of the project updated since `since`, newest first. */
+  projectMergeRequests(projectId: number, since: Date) {
+    return this.getAll<MergeRequest>(
+      `/projects/${projectId}/merge_requests`,
+      { state: 'all', updated_after: since.toISOString(), order_by: 'updated_at', sort: 'desc' },
+      5,
+    );
   }
 
   mergeRequest(mr: MrRef) {
@@ -206,5 +211,9 @@ export class GitLab {
   /** Passing the head sha makes GitLab reject the approval if new commits landed after we loaded the diff. */
   approve(mr: MrRef, sha: string) {
     return this.post<void>(`${this.mrPath(mr)}/approve`, { sha });
+  }
+
+  unapprove(mr: MrRef) {
+    return this.post<void>(`${this.mrPath(mr)}/unapprove`);
   }
 }

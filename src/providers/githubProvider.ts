@@ -21,7 +21,7 @@ type GhPull = {
 };
 type GhSearchItem = { number: number; repository_url: string; updated_at: string; state: string; pull_request?: { merged_at: string | null } };
 type GhFile = { filename: string; previous_filename?: string; status: string; patch?: string };
-type GhReview = { user: GhUser | null; state: string };
+type GhReview = { id: number; user: GhUser | null; state: string };
 
 const toPerson = (u: GhUser): Person => ({ username: u.login, name: u.name || u.login, avatarUrl: u.avatar_url });
 
@@ -153,8 +153,15 @@ export class GitHubProvider implements ReviewProvider {
       .map((r) => ({ provider: 'github', id: r.full_name, name: r.name, path: r.full_name }));
   }
 
-  async repoReviews(repo: Repo) {
-    return (await this.getAll<GhPull>(`/repos/${repo.id}/pulls?state=open`, 3)).map(toReview);
+  async repoReviews(repo: Repo, since: Date) {
+    // Sorted by last update, so paging can stop at the first page that reaches past `since`.
+    const out: GhPull[] = [];
+    for (let page = 1; page <= 10; page++) {
+      const pulls = await this.call<GhPull[]>('GET', `/repos/${repo.id}/pulls?state=all&sort=updated&direction=desc&per_page=100&page=${page}`);
+      out.push(...pulls.filter((p) => Date.parse(p.updated_at) >= since.getTime()));
+      if (pulls.length < 100 || Date.parse(pulls[pulls.length - 1].updated_at) < since.getTime()) break;
+    }
+    return out.map(toReview).filter((r) => r.state !== 'closed');
   }
 
   async refresh(review: Review) {
@@ -229,6 +236,23 @@ export class GitHubProvider implements ReviewProvider {
       })),
     });
     saveGithubDrafts(review.id, []);
+  }
+
+  /** GitHub can't withdraw an approval, only dismiss it, which needs write access to the repository. */
+  async unapprove(review: Review) {
+    const reviews = await this.getAll<GhReview>(`/repos/${review.repoId}/pulls/${review.number}/reviews`, 3);
+    const mine = reviews.filter((r) => r.user?.login === this.me.username && r.state === 'APPROVED').pop();
+    if (!mine) return;
+    try {
+      await this.call('PUT', `/repos/${review.repoId}/pulls/${review.number}/reviews/${mine.id}/dismissals`, {
+        message: 'Approve cofnięty',
+        event: 'DISMISS',
+      });
+    } catch (e) {
+      if (e instanceof ApiError && (e.status === 403 || e.status === 422))
+        throw new Error('GitHub nie pozwolił cofnąć approve (potrzebne prawa do odrzucania review w tym repo) — cofnij je na github.com.');
+      throw e;
+    }
   }
 }
 

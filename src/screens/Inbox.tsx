@@ -5,25 +5,28 @@ import {
   type Person,
   type ProviderKind,
   type Providers,
-  type Repo,
   type Review,
   type ReviewProvider,
 } from '../review';
-import { loadRecent } from '../storage';
+import { loadRecent, loadWatched, reviewedSha } from '../storage';
 import { loadInbox, MERGED_DAYS, type InboxData, type TaskGroup } from '../tasks';
 
 /**
  * `taskKey` is set when the reviews were opened from a task, so the review can lead back to it.
  * `queue` holds the task's other reviews still to do, in the order to offer them next.
  */
-type Props = { providers: Providers; onOpen: (reviews: Review[], taskKey?: string, queue?: Review[]) => void };
+type Props = {
+  providers: Providers;
+  onOpen: (reviews: Review[], taskKey?: string, queue?: Review[]) => void;
+  onOpenSettings: () => void;
+};
 
 type Tab = 'review' | 'recent' | 'repos';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'review', label: 'Do review' },
+  { id: 'repos', label: 'Obserwowane' },
   { id: 'recent', label: 'Ostatnie' },
-  { id: 'repos', label: 'Repozytoria' },
 ];
 
 // Survives the Inbox unmounting while a deck is open, so coming back lands on the same tab.
@@ -37,6 +40,8 @@ type Status = {
   required: number;
   changesRequestedBy: Person[];
   approvedByMe: boolean;
+  /** I viewed every file: at the current head commit, or before newer commits arrived. */
+  seen: 'current' | 'stale' | null;
   /** Merged, approved by me, or approved by someone with no approvals left. */
   done: boolean;
 };
@@ -55,7 +60,9 @@ function createStatusLoader(providers: Providers): StatusLoader {
     const me = provider.me.username;
     const approvedByMe = status.approvedBy.some((u) => u.username === me);
     const fullyApproved = status.approvedBy.length > 0 && status.approvalsLeft !== undefined && status.approvalsLeft <= 0;
-    return { ...status, me, approvedByMe, done: review.state === 'merged' || approvedByMe || fullyApproved };
+    const sha = reviewedSha(review);
+    const seen = !sha ? null : sha === review.headSha ? 'current' : 'stale';
+    return { ...status, me, approvedByMe, seen, done: review.state === 'merged' || approvedByMe || fullyApproved };
   };
   return (review) => {
     if (!cache.has(review.id)) cache.set(review.id, load(review));
@@ -83,7 +90,7 @@ function useStatuses(reviews: Review[] | null) {
   return statuses;
 }
 
-export function Inbox({ providers, onOpen }: Props) {
+export function Inbox({ providers, onOpen, onOpenSettings }: Props) {
   const [tab, setTab] = useState<Tab>(lastTab);
   const loadStatus = useMemo(() => createStatusLoader(providers), [providers]);
 
@@ -102,9 +109,9 @@ export function Inbox({ providers, onOpen }: Props) {
             </button>
           ))}
         </div>
-        {tab === 'review' && <ReviewInbox providers={providers} onOpen={onOpen} />}
-        {tab === 'recent' && <RecentList providers={providers} onOpen={onOpen} />}
-        {tab === 'repos' && <RepoBrowser providers={providers} onOpen={onOpen} />}
+        {tab === 'review' && <ReviewInbox providers={providers} onOpen={onOpen} onOpenSettings={onOpenSettings} />}
+        {tab === 'repos' && <WatchedFeed providers={providers} onOpen={onOpen} onOpenSettings={onOpenSettings} />}
+        {tab === 'recent' && <RecentList providers={providers} onOpen={onOpen} onOpenSettings={onOpenSettings} />}
       </div>
     </StatusContext.Provider>
   );
@@ -255,27 +262,41 @@ function RecentList({ providers, onOpen }: Props) {
   );
 }
 
-function RepoBrowser({ providers, onOpen }: Props) {
-  const [query, setQuery] = useState('');
-  const [repos, setRepos] = useState<Repo[] | null>(null);
-  const [repo, setRepo] = useState<Repo | null>(null);
+const FEED_DAYS = 2;
+
+/** Recent reviews (open and merged) in the repositories picked in the settings, newest first. */
+function WatchedFeed({ providers, onOpen, onOpenSettings }: Props) {
+  const [watched] = useState(() => loadWatched().filter((r) => providers[r.provider]));
+  const [days, setDays] = useState(FEED_DAYS);
   const [reviews, setReviews] = useState<Review[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [errors, setErrors] = useState<string[]>([]);
   const statuses = useStatuses(reviews);
   const list = useMemo(() => Object.values(providers) as ReviewProvider[], [providers]);
 
   useEffect(() => {
-    const t = setTimeout(() => {
-      Promise.all(list.map((p) => p.repos(query))).then((r) => setRepos(r.flat()), (e) => setError(String(e.message ?? e)));
-    }, 300);
-    return () => clearTimeout(t);
-  }, [list, query]);
-
-  useEffect(() => {
-    if (!repo) return;
-    setReviews(null);
-    providers[repo.provider]!.repoReviews(repo).then(setReviews, (e) => setError(String(e.message ?? e)));
-  }, [providers, repo]);
+    if (!watched.length) return;
+    let cancelled = false;
+    setLoadingMore(true);
+    const since = new Date(Date.now() - days * 86400000);
+    const failed: string[] = [];
+    Promise.all(
+      watched.map((repo) =>
+        providers[repo.provider]!.repoReviews(repo, since).catch((e) => {
+          failed.push(`${repo.path}: ${e instanceof Error ? e.message : e}`);
+          return [];
+        }),
+      ),
+    ).then((found) => {
+      if (cancelled) return;
+      setReviews(found.flat().sort((x, y) => updatedAt(y) - updatedAt(x)));
+      setErrors(failed);
+      setLoadingMore(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [providers, watched, days]);
 
   const openFeature = async (review: Review) => {
     const related = await Promise.all(list.map((p) => p.byBranch(review.sourceBranch).catch(() => [])));
@@ -283,46 +304,56 @@ function RepoBrowser({ providers, onOpen }: Props) {
     onOpen(found.length ? found : [review]);
   };
 
-  if (error) return <div className="error">{error}</div>;
-
-  if (repo) {
+  if (!watched.length) {
     return (
-      <div className="list">
-        <button className="link" onClick={() => setRepo(null)}>
-          ← {repo.path}
+      <div className="empty">
+        <p>Wybierz repozytoria, które chcesz obserwować — zobaczysz tu ich najnowsze MR, także zmergowane.</p>
+        <button className="primary" onClick={onOpenSettings}>
+          Wybierz repozytoria
         </button>
-        {!reviews && <div className="loading">Ładuję…</div>}
-        {reviews?.length === 0 && <div className="empty">Brak otwartych MR</div>}
-        {reviews?.map((r) => (
-          <ReviewRow key={r.id} review={r} status={statuses?.get(r.id)} onClick={() => onOpen([r])}>
-            <button
-              className="link small"
-              onClick={(e) => {
-                e.stopPropagation();
-                openFeature(r);
-              }}
-            >
-              + MR z tym samym branchem w innych repo
-            </button>
-          </ReviewRow>
-        ))}
       </div>
     );
   }
+  if (!reviews || !statuses) return <div className="loading">Ładuję…</div>;
 
   return (
     <div className="list">
-      <input className="search" placeholder="Szukaj repozytorium…" value={query} onChange={(e) => setQuery(e.target.value)} />
-      {!repos && <div className="loading">Ładuję…</div>}
-      {repos?.map((p) => (
-        <div key={`${p.provider}:${p.id}`} className="row-item" onClick={() => setRepo(p)}>
-          <div className="title">{p.name}</div>
-          <div className="meta">
-            <ProviderChip kind={p.provider} />
-            {p.path}
-          </div>
+      <div className="feed-head meta">
+        {watched.length} repo · ostatnie {days} dni ·{' '}
+        <button className="link small" onClick={onOpenSettings}>
+          zmień repozytoria
+        </button>
+      </div>
+      {errors.map((e) => (
+        <div key={e} className="error">
+          {e}
         </div>
       ))}
+      {reviews.length === 0 && <div className="empty">Brak MR z ostatnich {days} dni.</div>}
+      {reviews.map((r) => (
+        <ReviewRow key={r.id} review={r} status={statuses.get(r.id)} onClick={() => onOpen([r])}>
+          <div className="meta">
+            Aktualizacja {timeAgo(updatedAt(r))}
+            {r.state === 'open' && (
+              <>
+                {' · '}
+                <button
+                  className="link small"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openFeature(r);
+                  }}
+                >
+                  + MR z tym samym branchem
+                </button>
+              </>
+            )}
+          </div>
+        </ReviewRow>
+      ))}
+      <button className="secondary" disabled={loadingMore} onClick={() => setDays((d) => d * 2)}>
+        {loadingMore ? 'Ładuję…' : `Pokaż starsze (ostatnie ${days * 2} dni)`}
+      </button>
     </div>
   );
 }
@@ -336,7 +367,7 @@ type ReviewRowProps = { review: Review; status?: Status | null; chip?: boolean; 
 
 function ReviewRow({ review, status, chip, onClick, children }: ReviewRowProps) {
   return (
-    <div className={`row-item${status?.approvedByMe ? ' approved' : ''}`} onClick={onClick}>
+    <div className={`row-item${status?.approvedByMe ? ' approved' : status?.seen === 'current' ? ' seen' : ''}`} onClick={onClick}>
       <div className="meta">
         {chip && <span className="kind-chip">{review.provider === 'github' ? 'PR' : 'MR'}</span>}
         <ProviderChip kind={review.provider} />
@@ -359,12 +390,15 @@ const firstNames = (users: Person[]) => users.map((u) => u.name.split(' ')[0]).j
 
 // My own approval is shown as the row's green frame; badges cover everyone else.
 function StatusBadges({ status }: { status: Status }) {
-  const { me, approvedBy, required, changesRequestedBy, approvedByMe } = status;
+  const { me, approvedBy, required, changesRequestedBy, approvedByMe, seen } = status;
   const others = approvedBy.filter((u) => u.username !== me);
   const count = required ? `${approvedBy.length}/${required}` : String(approvedBy.length);
 
   return (
     <div className="mr-status">
+      {!approvedByMe && seen && (
+        <span className="status seen">{seen === 'current' ? '👁 Obejrzane, bez approve' : '👁 Obejrzane — są nowe zmiany'}</span>
+      )}
       {others.length > 0 ? (
         <span className="status ok" title={others.map((u) => u.name).join(', ')}>
           ✓ {count} approve: {firstNames(others)}

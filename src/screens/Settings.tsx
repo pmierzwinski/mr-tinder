@@ -1,17 +1,19 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ConnectSheet } from '../components/ConnectSheet';
 import type { Account } from '../providers';
-import { PROVIDER_LABEL, type ProviderKind } from '../review';
+import { PROVIDER_LABEL, type ProviderKind, type Providers, type Repo, type ReviewProvider } from '../review';
+import { loadWatched, saveWatched } from '../storage';
 
 type Props = {
   accounts: Account[];
+  providers: Providers;
   onAccountsChange: (accounts: Account[]) => void;
   onClose: () => void;
 };
 
 const KINDS: ProviderKind[] = ['gitlab', 'github'];
 
-export function Settings({ accounts, onAccountsChange, onClose }: Props) {
+export function Settings({ accounts, providers, onAccountsChange, onClose }: Props) {
   const [connecting, setConnecting] = useState<ProviderKind | null>(null);
 
   const accountOf = (kind: ProviderKind) => accounts.find((a) => a.kind === kind);
@@ -62,6 +64,8 @@ export function Settings({ accounts, onAccountsChange, onClose }: Props) {
       })}
 
 
+      <WatchedRepos providers={providers} />
+
       {connecting && (
         <ConnectSheet
           kind={connecting}
@@ -74,5 +78,80 @@ export function Settings({ accounts, onAccountsChange, onClose }: Props) {
         />
       )}
     </div>
+  );
+}
+
+const repoKey = (r: Repo) => `${r.provider}:${r.id}`;
+
+/** Picks the repositories whose recent reviews the "Obserwowane" tab lists. */
+function WatchedRepos({ providers }: { providers: Providers }) {
+  const [watched, setWatched] = useState(loadWatched);
+  const [query, setQuery] = useState('');
+  const [found, setFound] = useState<Repo[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const list = useMemo(() => Object.values(providers) as ReviewProvider[], [providers]);
+
+  useEffect(() => {
+    if (!query.trim()) {
+      setFound(null);
+      return;
+    }
+    let cancelled = false;
+    const t = setTimeout(() => {
+      Promise.all(list.map((p) => p.repos(query))).then(
+        (r) => !cancelled && (setFound(r.flat()), setError(null)),
+        (e) => !cancelled && setError(String(e instanceof Error ? e.message : e)),
+      );
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [list, query]);
+
+  const update = (next: Repo[]) => {
+    saveWatched(next);
+    setWatched(next);
+  };
+  const isWatched = (r: Repo) => watched.some((w) => repoKey(w) === repoKey(r));
+
+  return (
+    <section className="settings-section">
+      <h3>Obserwowane repozytoria</h3>
+      <p className="hint small">Ich najnowsze MR (także zmergowane) zobaczysz w zakładce „Obserwowane”.</p>
+      {watched.length > 0 && (
+        <ul className="watched">
+          {watched.map((r) => (
+            <li key={repoKey(r)}>
+              <span className={`provider-chip ${r.provider}`}>{PROVIDER_LABEL[r.provider]}</span>
+              <span className="watched-path">{r.path}</span>
+              <button className="link small" onClick={() => update(watched.filter((w) => repoKey(w) !== repoKey(r)))}>
+                usuń
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <input className="search" placeholder="Dodaj repozytorium — wpisz nazwę…" value={query} onChange={(e) => setQuery(e.target.value)} />
+      {error && <div className="error">{error}</div>}
+      {found && found.length === 0 && <p className="hint small">Nic nie znaleziono.</p>}
+      {found && found.length > 0 && (
+        <ul className="watched found">
+          {found.map((r) => (
+            <li key={repoKey(r)}>
+              <span className={`provider-chip ${r.provider}`}>{PROVIDER_LABEL[r.provider]}</span>
+              <span className="watched-path">{r.path}</span>
+              {isWatched(r) ? (
+                <span className="hint small">✓ obserwujesz</span>
+              ) : (
+                <button className="secondary small" onClick={() => update([...watched, r])}>
+                  + Obserwuj
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }

@@ -1,5 +1,5 @@
 import type { Account } from './providers';
-import type { Draft, Review } from './review';
+import type { Draft, Repo, Review } from './review';
 
 function readJson<T>(key: string): T | null {
   try {
@@ -53,6 +53,19 @@ export function addRecent(reviews: Review[]) {
 const githubDraftsKey = (reviewId: string) => `mr-tinder:github-drafts:${reviewId}`;
 export const loadGithubDrafts = (reviewId: string) => readJson<Draft[]>(githubDraftsKey(reviewId)) ?? [];
 export const saveGithubDrafts = (reviewId: string, drafts: Draft[]) => writeJson(githubDraftsKey(reviewId), drafts);
+
+// Repositories whose recent reviews the "Obserwowane" tab shows.
+const WATCHED_KEY = 'mr-tinder:watched-repos';
+export const loadWatched = () => readJson<Repo[]>(WATCHED_KEY) ?? [];
+export const saveWatched = (repos: Repo[]) => writeJson(WATCHED_KEY, repos);
+
+// Reviews I went through to the end (every file viewed), with the head commit seen then:
+// "viewed but not approved yet" in the lists, until new commits arrive.
+const REVIEWED_KEY = 'mr-tinder:reviewed';
+export const reviewedSha = (review: Review) => readJson<Record<string, string>>(REVIEWED_KEY)?.[review.id];
+export function markReviewed(review: Review) {
+  writeJson(REVIEWED_KEY, { ...readJson<Record<string, string>>(REVIEWED_KEY), [review.id]: review.headSha });
+}
 
 // Per-device display preference: smaller code font in the diff.
 const SMALL_CODE_KEY = 'mr-tinder:small-code';

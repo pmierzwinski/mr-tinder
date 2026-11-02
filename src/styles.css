@@ -935,3 +935,64 @@ button.big {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.drafts li {
+  min-width: 0;
+}
+/* Long file paths are one unbreakable word; let them wrap inside the box. */
+.drafts .meta {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.done-row {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.next-skip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.next-skip .meta {
+  font-weight: 400;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.row-item.seen {
+  border-color: var(--warn);
+}
+.status.seen {
+  color: var(--warn);
+  background: rgba(180, 156, 255, 0.12);
+}
+.feed-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.watched {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.watched li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.watched-path {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--mono);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}

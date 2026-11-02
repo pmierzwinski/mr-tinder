@@ -80,8 +80,9 @@ export class GitLabProvider implements ReviewProvider {
     return projects.map((p) => ({ provider: 'gitlab', id: String(p.id), name: p.name, path: p.path_with_namespace }));
   }
 
-  async repoReviews(repo: Repo) {
-    return (await this.api.projectMergeRequests(Number(repo.id))).map(toReview);
+  async repoReviews(repo: Repo, since: Date) {
+    const mrs = await this.api.projectMergeRequests(Number(repo.id), since);
+    return mrs.filter((mr) => mr.state !== 'closed').map(toReview);
   }
 
   async refresh(review: Review) {
@@ -152,5 +153,9 @@ export class GitLabProvider implements ReviewProvider {
     const pending = await this.api.draftNotes(ref(review));
     if (pending.length) await this.api.publishDrafts(ref(review));
     if (approve) await this.api.approve(ref(review), review.headSha);
+  }
+
+  async unapprove(review: Review) {
+    await this.api.unapprove(ref(review));
   }
 }

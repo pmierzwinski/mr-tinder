@@ -71,7 +71,8 @@ export interface ReviewProvider {
   search(term: string): Promise<Review[]>;
   byBranch(branch: string): Promise<Review[]>;
   repos(query: string): Promise<Repo[]>;
-  repoReviews(repo: Repo): Promise<Review[]>;
+  /** Open and merged reviews in the repository updated since `since`, newest first. */
+  repoReviews(repo: Repo, since: Date): Promise<Review[]>;
 
   /** Fresh copy, including diff base commits. */
   refresh(review: Review): Promise<Review>;
@@ -86,6 +87,8 @@ export interface ReviewProvider {
   deleteDraft(review: Review, draft: Draft): Promise<void>;
   /** Publishes the pending comments (plus an optional summary), approving when asked. */
   submit(review: Review, opts: { summary?: string; approve: boolean }): Promise<void>;
+  /** Takes back my approval (comments that were sent with it stay). */
+  unapprove(review: Review): Promise<void>;
 }
 
 export type Providers = Partial<Record<ProviderKind, ReviewProvider>>;

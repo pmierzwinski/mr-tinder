@@ -59,7 +59,9 @@ export function App() {
   }
 
   if (settingsOpen) {
-    return <Settings accounts={accounts} onAccountsChange={updateAccounts} onClose={() => setSettingsOpen(false)} />;
+    return (
+      <Settings accounts={accounts} providers={providers} onAccountsChange={updateAccounts} onClose={() => setSettingsOpen(false)} />
+    );
   }
 
   return (
@@ -76,6 +78,7 @@ export function App() {
       <Inbox
         providers={providers}
         onOpen={openDeck}
+        onOpenSettings={() => setSettingsOpen(true)}
       />
     </>
   );

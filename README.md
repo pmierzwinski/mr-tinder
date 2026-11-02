@@ -32,7 +32,14 @@ Jednorazowo: Settings → Pages → Source: **GitHub Actions**.
 
 MR/PR-y są grupowane po kluczu Jiry (np. `ABC-123`) z tytułu lub brancha — także między GitLabem a GitHubem.
 Task przeglądasz jako jedną talię i na końcu możesz zrobić „Approve wszystkie”.
-W zakładce „Repozytoria” przy MR jest „+ MR z tym samym branchem w innych repo”.
+Przy otwartym MR w zakładce „Obserwowane” jest „+ MR z tym samym branchem”.
+
+## Obserwowane repozytoria
+
+W ⚙︎ wybierasz repozytoria do obserwowania; zakładka „Obserwowane” pokazuje ich MR (otwarte i zmergowane)
+zaktualizowane w ostatnich 2 dniach, a „Pokaż starsze” podwaja ten okres.
+MR z obejrzanymi wszystkimi plikami, ale bez Twojego approve, ma fioletową ramkę „👁 Obejrzane” (stan trzymany na urządzeniu,
+po nowym pushu zmienia się na „są nowe zmiany”).
 
 ## Ograniczenia
 
@@ -41,4 +48,5 @@ W zakładce „Repozytoria” przy MR jest „+ MR z tym samym branchem w innych
 - GitHub nie pozwala dokładać komentarzy do oczekującego review pojedynczo, więc drafty komentarzy do PR-ów są
   trzymane na urządzeniu i wysyłane jednym review przy Approve / wysłaniu komentarzy. Komentować można tylko linie diffu
   (nie odsłonięty kontekst), a komentarze do całego pliku trafiają do treści review.
+- Cofnięcie approve na GitHubie to odrzucenie (dismiss) własnego review — wymaga uprawnień do odrzucania review w repo.
 - Wyszukiwarka GitHuba pozwala na ~30 zapytań na minutę, więc wyniki są przez minutę cache'owane.

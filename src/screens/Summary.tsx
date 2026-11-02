@@ -1,6 +1,6 @@
-import { useState, type Dispatch, type SetStateAction } from 'react';
+import { useEffect, useState, type Dispatch, type SetStateAction } from 'react';
 import { providerFor, type Draft, type Providers, type Review } from '../review';
-import { isViewed } from '../storage';
+import { isViewed, markReviewed } from '../storage';
 import type { Card, NextReview } from './Deck';
 
 type Props = {
@@ -15,7 +15,8 @@ type Props = {
   onRestart: () => void;
 };
 
-type Status = { busy?: boolean; done?: string; error?: string };
+/** `approved` allows taking the approval back; `info` is a note shown above the actions. */
+type Status = { busy?: boolean; done?: string; approved?: boolean; info?: string; error?: string };
 
 type Outcome = 'comment' | 'approve';
 
@@ -30,6 +31,14 @@ export function Summary({ providers, reviews, cards, drafts, setDrafts, exitLabe
 
   const update = (review: Review, s: Status) => setStatus((prev) => ({ ...prev, [review.id]: s }));
 
+  // A review with every file viewed shows as "viewed" in the lists until it's approved or changes again.
+  useEffect(() => {
+    for (const review of reviews) {
+      const files = cards.filter((c) => c.review.id === review.id);
+      if (files.length && files.every((c) => isViewed(c.review, c.file.new_path, c.hash))) markReviewed(review);
+    }
+  }, [reviews, cards]);
+
   const run = async (review: Review, outcome: Outcome) => {
     update(review, { busy: true });
     try {
@@ -37,9 +46,20 @@ export function Summary({ providers, reviews, cards, drafts, setDrafts, exitLabe
       await providerFor(providers, review).submit(review, { summary, approve: outcome === 'approve' });
       setDrafts((d) => ({ ...d, [review.id]: [] }));
       setSummaries((s) => ({ ...s, [review.id]: '' }));
-      update(review, { done: DONE[outcome] });
+      update(review, { done: DONE[outcome], approved: outcome === 'approve' });
     } catch (e) {
       update(review, { error: String(e instanceof Error ? e.message : e) });
+    }
+  };
+
+  const unapprove = async (review: Review) => {
+    const before = status[review.id];
+    update(review, { ...before, busy: true });
+    try {
+      await providerFor(providers, review).unapprove(review);
+      update(review, { info: 'Approve cofnięty — wysłane komentarze zostają.' });
+    } catch (e) {
+      update(review, { ...before, busy: false, error: String(e instanceof Error ? e.message : e) });
     }
   };
 
@@ -95,8 +115,16 @@ export function Summary({ providers, reviews, cards, drafts, setDrafts, exitLabe
               onChange={(e) => setSummaries((p) => ({ ...p, [key]: e.target.value }))}
             />
             {s.error && <div className="error">{s.error}</div>}
+            {s.info && <div className="meta">{s.info}</div>}
             {s.done ? (
-              <div className="done">{s.done}</div>
+              <div className="done-row">
+                <div className="done">{s.done}</div>
+                {s.approved && (
+                  <button className="link small" disabled={s.busy} onClick={() => unapprove(review)}>
+                    {s.busy ? 'Cofam…' : '↶ Cofnij approve'}
+                  </button>
+                )}
+              </div>
             ) : (
               <div className="review-actions">
                 {hasComments ? (
@@ -111,6 +139,11 @@ export function Summary({ providers, reviews, cards, drafts, setDrafts, exitLabe
                 ) : (
                   <button className="primary" disabled={s.busy} onClick={() => run(review, 'approve')}>
                     ✓ Approve
+                  </button>
+                )}
+                {next && (
+                  <button className="secondary next-skip" disabled={s.busy} onClick={next.open}>
+                    Następny MR bez approve →<span className="meta">{next.review.ref}</span>
                   </button>
                 )}
               </div>
