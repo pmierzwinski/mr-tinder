@@ -31,8 +31,9 @@ Jednorazowo: Settings → Pages → Source: **GitHub Actions**.
 ## Taski (feature w kilku repo)
 
 MR/PR-y są grupowane po kluczu Jiry (np. `ABC-123`) z tytułu lub brancha — także między GitLabem a GitHubem.
-Bez klucza Jiry grupuje część tytułu przed pierwszym `/`: „Zadanie 1/ winman” i „Zadanie 1 / UI” to jeden task,
-a „Zadanie 1” i „Zadanie 1 part 2” to osobne MR.
+Bez klucza Jiry grupuje część tytułu przed pierwszym `:` lub `/`: „Task abc: doing something” i „Task abc/ UI” to jeden task,
+a „Zadanie 1” i „Zadanie 1 part 2” to osobne MR. Pomijane są przedrostki `Draft:` / `WIP:`, autor w stylu
+`imie.nazwisko/` (kropka, bez spacji) oraz typy zmian (`fix:`, `feat(ui):`, `chore:` …), które niczego nie grupują.
 Task przeglądasz jako jedną talię i na końcu możesz zrobić „Approve wszystkie”.
 
 ## Obserwowane repozytoria
@@ -40,7 +41,7 @@ Task przeglądasz jako jedną talię i na końcu możesz zrobić „Approve wszy
 W ⚙︎ wybierasz repozytoria albo cały projekt (grupa GitLaba / organizacja lub konto GitHuba — wpisz np. `wings-of-heroes`)
 do obserwowania; projekt obejmuje też repozytoria dodane do niego później; zakładka „Obserwowane” pokazuje ich MR (otwarte i zmergowane)
 zaktualizowane w ostatnich 2 dniach, a „Pokaż starsze” podwaja ten okres.
-MR z tym samym kluczem Jiry albo przedrostkiem przed `/` są złączone w jeden task, jak w „Do review”.
+MR z tym samym kluczem Jiry albo nazwą taska przed `:` / `/` są złączone w jeden task, jak w „Do review”.
 MR z obejrzanymi wszystkimi plikami, ale bez Twojego approve, ma fioletową ramkę „👁 Obejrzane” (stan trzymany na urządzeniu,
 po nowym pushu zmienia się na „są nowe zmiany”).
 

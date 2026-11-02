@@ -13,14 +13,25 @@ export function jiraKey(r: Review): string | null {
   return key?.toUpperCase() ?? null;
 }
 
-/** Naming convention: the title part before the first "/" ("Zadanie 1/ winman", "Zadanie 1 / UI" → "Zadanie 1"). */
+// GitLab marks unfinished MRs in the title; that's not part of the task name.
+const DRAFT_PREFIX = /^\s*(\[(draft|wip)\]|\(?(draft|wip)\)?:)\s*/i;
+// "jan.kowalski/…": people put their name before the title; a dot and no spaces tells it from a task name.
+const AUTHOR_PREFIX = /^[^\s/:]+\.[^\s/:]+\s*\/\s*/;
+// "fix: …", "feat(ui): …" describe the kind of change, not a task, so they don't group.
+const CHANGE_TYPE = /^(feat|feature|fix|bugfix|hotfix|chore|refactor|docs|test|tests|style|perf|build|ci|revert|merge)(\(.*\))?!?$/i;
+
+/**
+ * Naming convention: the title part before the first ":" or "/" is the task name
+ * ("Task abc: doing something", "Task abc/ doing something" → "Task abc").
+ */
 export function titleGroup(r: Review): string | null {
-  const slash = r.title.indexOf('/');
-  const group = slash > 0 ? r.title.slice(0, slash).trim().replace(/\s+/g, ' ') : '';
-  return group || null;
+  const title = r.title.replace(DRAFT_PREFIX, '').replace(AUTHOR_PREFIX, '');
+  const end = title.search(/[:/]/);
+  const group = end > 0 ? title.slice(0, end).trim().replace(/\s+/g, ' ') : '';
+  return group && !CHANGE_TYPE.test(group) ? group : null;
 }
 
-/** What groups reviews into one task: the Jira key, otherwise the title part before "/". */
+/** What groups reviews into one task: the Jira key, otherwise the title part before ":" or "/". */
 export const taskKey = (r: Review) => jiraKey(r) ?? titleGroup(r);
 
 const IS_JIRA_KEY = /^[A-Z][A-Z0-9]{1,9}-\d+$/;
