@@ -5,6 +5,7 @@ import {
   type Person,
   type ProviderKind,
   type Providers,
+  type Repo,
   type Review,
   type ReviewProvider,
 } from '../review';
@@ -264,6 +265,12 @@ function RecentList({ providers, onOpen }: Props) {
 
 const FEED_DAYS = 2;
 
+const watchedLabel = (watched: Repo[]) => {
+  const groups = watched.filter((r) => r.group).length;
+  const repos = watched.length - groups;
+  return [groups && `${groups} ${groups === 1 ? 'projekt' : 'projekty'}`, repos && `${repos} repo`].filter(Boolean).join(' + ');
+};
+
 /** Recent reviews (open and merged) in the repositories picked in the settings, newest first. */
 function WatchedFeed({ providers, onOpen, onOpenSettings }: Props) {
   const [watched] = useState(() => loadWatched().filter((r) => providers[r.provider]));
@@ -289,7 +296,9 @@ function WatchedFeed({ providers, onOpen, onOpenSettings }: Props) {
       ),
     ).then((found) => {
       if (cancelled) return;
-      setReviews(found.flat().sort((x, y) => updatedAt(y) - updatedAt(x)));
+      // A repository can also be watched through its group: show each review once.
+      const unique = [...new Map(found.flat().map((r) => [r.id, r])).values()];
+      setReviews(unique.sort((x, y) => updatedAt(y) - updatedAt(x)));
       setErrors(failed);
       setLoadingMore(false);
     });
@@ -319,7 +328,7 @@ function WatchedFeed({ providers, onOpen, onOpenSettings }: Props) {
   return (
     <div className="list">
       <div className="feed-head meta">
-        {watched.length} repo · ostatnie {days} dni ·{' '}
+        {watchedLabel(watched)} · ostatnie {days} dni ·{' '}
         <button className="link small" onClick={onOpenSettings}>
           zmień repozytoria
         </button>

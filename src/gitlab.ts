@@ -2,7 +2,9 @@ import { splitLines, type FileDiff } from './review';
 
 export type User = { id: number; username: string; name: string; avatar_url: string };
 
-export type Project = { id: number; path_with_namespace: string; name: string; last_activity_at: string };
+export type Namespace = { id: number; name: string; full_path: string; kind: 'group' | 'user' };
+export type Project = { id: number; path_with_namespace: string; name: string; last_activity_at: string; namespace?: Namespace };
+export type Group = { id: number; name: string; full_path: string };
 
 export type DiffRefs = { base_sha: string; start_sha: string; head_sha: string };
 
@@ -141,9 +143,23 @@ export class GitLab {
       membership: true,
       simple: true,
       search: search || undefined,
+      search_namespaces: true,
       order_by: 'last_activity_at',
       per_page: 30,
     });
+  }
+
+  searchGroups(search: string) {
+    return this.get<Group[]>('/groups', { search, per_page: 20 });
+  }
+
+  /** All MRs in the group (subgroups included) updated since `since`, newest first. */
+  groupMergeRequests(groupId: number, since: Date) {
+    return this.getAll<MergeRequest>(
+      `/groups/${groupId}/merge_requests`,
+      { state: 'all', updated_after: since.toISOString(), order_by: 'updated_at', sort: 'desc' },
+      5,
+    );
   }
 
   /** All MRs of the project updated since `since`, newest first. */

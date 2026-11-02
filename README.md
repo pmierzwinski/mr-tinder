@@ -36,7 +36,8 @@ Przy otwartym MR w zakładce „Obserwowane” jest „+ MR z tym samym branchem
 
 ## Obserwowane repozytoria
 
-W ⚙︎ wybierasz repozytoria do obserwowania; zakładka „Obserwowane” pokazuje ich MR (otwarte i zmergowane)
+W ⚙︎ wybierasz repozytoria albo cały projekt (grupa GitLaba / organizacja lub konto GitHuba — wpisz np. `wings-of-heroes`)
+do obserwowania; projekt obejmuje też repozytoria dodane do niego później; zakładka „Obserwowane” pokazuje ich MR (otwarte i zmergowane)
 zaktualizowane w ostatnich 2 dniach, a „Pokaż starsze” podwaja ten okres.
 MR z obejrzanymi wszystkimi plikami, ale bez Twojego approve, ma fioletową ramkę „👁 Obejrzane” (stan trzymany na urządzeniu,
 po nowym pushu zmienia się na „są nowe zmiany”).

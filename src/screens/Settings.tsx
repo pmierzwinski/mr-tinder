@@ -81,7 +81,8 @@ export function Settings({ accounts, providers, onAccountsChange, onClose }: Pro
   );
 }
 
-const repoKey = (r: Repo) => `${r.provider}:${r.id}`;
+// Group and project ids are separate sequences on GitLab.
+const repoKey = (r: Repo) => `${r.provider}:${r.group ? 'group:' : ''}${r.id}`;
 
 /** Picks the repositories whose recent reviews the "Obserwowane" tab lists. */
 function WatchedRepos({ providers }: { providers: Providers }) {
@@ -118,13 +119,16 @@ function WatchedRepos({ providers }: { providers: Providers }) {
   return (
     <section className="settings-section">
       <h3>Obserwowane repozytoria</h3>
-      <p className="hint small">Ich najnowsze MR (także zmergowane) zobaczysz w zakładce „Obserwowane”.</p>
+      <p className="hint small">
+        Ich najnowsze MR (także zmergowane) zobaczysz w zakładce „Obserwowane”. Cały projekt (grupa GitLaba / organizacja GitHuba)
+        obejmuje też repozytoria dodane do niego później.
+      </p>
       {watched.length > 0 && (
         <ul className="watched">
           {watched.map((r) => (
             <li key={repoKey(r)}>
               <span className={`provider-chip ${r.provider}`}>{PROVIDER_LABEL[r.provider]}</span>
-              <span className="watched-path">{r.path}</span>
+              <RepoPath repo={r} />
               <button className="link small" onClick={() => update(watched.filter((w) => repoKey(w) !== repoKey(r)))}>
                 usuń
               </button>
@@ -132,7 +136,7 @@ function WatchedRepos({ providers }: { providers: Providers }) {
           ))}
         </ul>
       )}
-      <input className="search" placeholder="Dodaj repozytorium — wpisz nazwę…" value={query} onChange={(e) => setQuery(e.target.value)} />
+      <input className="search" placeholder="Dodaj repozytorium lub cały projekt — wpisz nazwę…" value={query} onChange={(e) => setQuery(e.target.value)} />
       {error && <div className="error">{error}</div>}
       {found && found.length === 0 && <p className="hint small">Nic nie znaleziono.</p>}
       {found && found.length > 0 && (
@@ -140,12 +144,12 @@ function WatchedRepos({ providers }: { providers: Providers }) {
           {found.map((r) => (
             <li key={repoKey(r)}>
               <span className={`provider-chip ${r.provider}`}>{PROVIDER_LABEL[r.provider]}</span>
-              <span className="watched-path">{r.path}</span>
+              <RepoPath repo={r} />
               {isWatched(r) ? (
                 <span className="hint small">✓ obserwujesz</span>
               ) : (
                 <button className="secondary small" onClick={() => update([...watched, r])}>
-                  + Obserwuj
+                  {r.group ? '+ Cały projekt' : '+ Obserwuj'}
                 </button>
               )}
             </li>
@@ -153,5 +157,15 @@ function WatchedRepos({ providers }: { providers: Providers }) {
         </ul>
       )}
     </section>
+  );
+}
+
+function RepoPath({ repo }: { repo: Repo }) {
+  return (
+    <span className="watched-path">
+      {repo.group && '📁 '}
+      {repo.path}
+      {repo.group && <span className="hint small"> · cały projekt</span>}
+    </span>
   );
 }

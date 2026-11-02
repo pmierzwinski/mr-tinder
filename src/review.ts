@@ -57,7 +57,8 @@ export type ReviewStatus = {
   changesRequestedBy: Person[];
 };
 
-export type Repo = { provider: ProviderKind; id: string; name: string; path: string };
+/** A repository, or with `group` a whole GitLab group / GitHub owner (all its repositories). */
+export type Repo = { provider: ProviderKind; id: string; name: string; path: string; group?: boolean };
 
 export interface ReviewProvider {
   readonly kind: ProviderKind;
@@ -70,8 +71,9 @@ export interface ReviewProvider {
   /** Open or merged reviews in my repositories whose title mentions `term`. */
   search(term: string): Promise<Review[]>;
   byBranch(branch: string): Promise<Review[]>;
+  /** Groups / owners matching `query` first, then repositories. */
   repos(query: string): Promise<Repo[]>;
-  /** Open and merged reviews in the repository updated since `since`, newest first. */
+  /** Open and merged reviews in the repository (or group) updated since `since`, newest first. */
   repoReviews(repo: Repo, since: Date): Promise<Review[]>;
 
   /** Fresh copy, including diff base commits. */

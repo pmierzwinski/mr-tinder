@@ -145,15 +145,30 @@ export class GitHubProvider implements ReviewProvider {
   }
 
   async repos(query: string): Promise<Repo[]> {
-    const repos = await this.call<{ full_name: string; name: string }[]>('GET', '/user/repos?sort=updated&per_page=100');
+    const repos = await this.call<{ full_name: string; name: string; owner: { login: string } }[]>('GET', '/user/repos?sort=updated&per_page=100');
     const q = query.trim().toLowerCase();
-    return repos
-      .filter((r) => !q || r.full_name.toLowerCase().includes(q))
-      .slice(0, 30)
-      .map((r) => ({ provider: 'github', id: r.full_name, name: r.name, path: r.full_name }));
+    const matching = repos.filter((r) => !q || r.full_name.toLowerCase().includes(q)).slice(0, 30);
+    const owners = q ? [...new Set(repos.map((r) => r.owner.login))].filter((o) => o.toLowerCase().includes(q)) : [];
+    return [
+      ...owners.map((o): Repo => ({ provider: 'github', id: o, name: o, path: o, group: true })),
+      ...matching.map((r): Repo => ({ provider: 'github', id: r.full_name, name: r.name, path: r.full_name })),
+    ];
   }
 
-  async repoReviews(repo: Repo, since: Date) {
+  async repoReviews(repo: Repo, since: Date): Promise<Review[]> {
+    if (repo.group) {
+      // Only repositories pushed to since then can have new or merged PRs; pushed_at moves on merges and branch pushes.
+      const owner = encodeURIComponent(repo.id);
+      const list = await this.call<{ full_name: string; pushed_at: string }[]>('GET', `/orgs/${owner}/repos?sort=pushed&per_page=100`).catch(
+        (e) => {
+          if (e instanceof ApiError && e.status === 404) return this.call<{ full_name: string; pushed_at: string }[]>('GET', `/users/${owner}/repos?sort=pushed&per_page=100`);
+          throw e;
+        },
+      );
+      const active = list.filter((r) => Date.parse(r.pushed_at) >= since.getTime());
+      const found = await Promise.all(active.map((r) => this.repoReviews({ provider: 'github', id: r.full_name, name: r.full_name, path: r.full_name }, since)));
+      return found.flat().sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
+    }
     // Sorted by last update, so paging can stop at the first page that reaches past `since`.
     const out: GhPull[] = [];
     for (let page = 1; page <= 10; page++) {

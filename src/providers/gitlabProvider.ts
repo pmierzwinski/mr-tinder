@@ -76,12 +76,24 @@ export class GitLabProvider implements ReviewProvider {
   }
 
   async repos(query: string): Promise<Repo[]> {
-    const projects = await this.api.searchProjects(query);
-    return projects.map((p) => ({ provider: 'gitlab', id: String(p.id), name: p.name, path: p.path_with_namespace }));
+    const q = query.trim().toLowerCase();
+    const [projects, groups] = await Promise.all([this.api.searchProjects(query), q ? this.api.searchGroups(q).catch(() => []) : []]);
+    // Groups I only reach through a project don't show up in the group search; take them from the projects' namespaces.
+    const found = new Map(groups.map((g) => [g.id, g]));
+    for (const p of projects) {
+      const ns = p.namespace;
+      if (ns?.kind === 'group' && ns.full_path.toLowerCase().includes(q) && !found.has(ns.id)) found.set(ns.id, ns);
+    }
+    return [
+      ...[...found.values()].map((g): Repo => ({ provider: 'gitlab', id: String(g.id), name: g.name, path: g.full_path, group: true })),
+      ...projects.map((p): Repo => ({ provider: 'gitlab', id: String(p.id), name: p.name, path: p.path_with_namespace })),
+    ];
   }
 
   async repoReviews(repo: Repo, since: Date) {
-    const mrs = await this.api.projectMergeRequests(Number(repo.id), since);
+    const mrs = repo.group
+      ? await this.api.groupMergeRequests(Number(repo.id), since)
+      : await this.api.projectMergeRequests(Number(repo.id), since);
     return mrs.filter((mr) => mr.state !== 'closed').map(toReview);
   }
 
