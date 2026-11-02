@@ -10,7 +10,7 @@ import {
   type ReviewProvider,
 } from '../review';
 import { loadRecent, loadWatched, reviewedSha } from '../storage';
-import { loadInbox, MERGED_DAYS, type InboxData, type TaskGroup } from '../tasks';
+import { jiraKey, loadInbox, MERGED_DAYS, type InboxData, type TaskGroup } from '../tasks';
 
 /**
  * `taskKey` is set when the reviews were opened from a task, so the review can lead back to it.
@@ -168,39 +168,17 @@ function ReviewInbox({ providers, onOpen }: Props) {
   ];
 
   const renderTask = (g: TaskGroup) => (
-    <div key={g.key} className={`group${taskDone(g) ? ' finished' : ''}`}>
-      <div className="group-head" onClick={() => setOpen(open === g.key ? null : g.key)}>
-        <div>
-          <div className="group-title">
-            <span className="kind-chip task">TASK</span> {g.key}
-          </div>
-          <div className="meta">
-            {g.reviews.length} MR · {g.reviews.filter((r) => statuses.get(r.id)?.done).length} gotowe ·{' '}
-            {new Set(g.reviews.map((r) => r.repo)).size} repo · {open === g.key ? 'zwiń ▴' : 'pokaż ▾'}
-          </div>
-        </div>
-        <button
-          className="primary small"
-          onClick={(e) => {
-            e.stopPropagation();
-            // Merged reviews can't be reviewed any more, unless nothing else is left.
-            const pending = g.reviews.filter((r) => r.state !== 'merged');
-            setOpen(g.key);
-            onOpen(pending.length ? pending : g.reviews, g.key);
-          }}
-        >
-          Review całości
-        </button>
-      </div>
-      {open === g.key &&
-        g.reviews.map((r, i) => {
-          // The ones after this review first, then wrap around to the ones before it.
-          const queue = [...g.reviews.slice(i + 1), ...g.reviews.slice(0, i)].filter(
-            (o) => o.state !== 'merged' && !statuses.get(o.id)?.done,
-          );
-          return <ReviewRow key={r.id} review={r} status={statuses.get(r.id)} onClick={() => onOpen([r], g.key, queue)} />;
-        })}
-    </div>
+    <TaskCard
+      key={g.key}
+      task={g}
+      statuses={statuses}
+      expanded={open === g.key}
+      onToggle={() => setOpen(open === g.key ? null : g.key)}
+      onOpen={(reviews, queue) => {
+        setOpen(g.key);
+        onOpen(reviews, g.key, queue);
+      }}
+    />
   );
 
   const renderItem = (item: InboxItem) =>
@@ -227,6 +205,76 @@ function ReviewInbox({ providers, onOpen }: Props) {
       {showDone && done.map(renderItem)}
     </div>
   );
+}
+
+type TaskCardProps = {
+  task: TaskGroup;
+  statuses: Map<string, Status | null>;
+  expanded: boolean;
+  onToggle: () => void;
+  onOpen: (reviews: Review[], queue?: Review[]) => void;
+};
+
+/** Several reviews under one ticket: opens as one deck, or expands into its reviews. */
+function TaskCard({ task: g, statuses, expanded, onToggle, onOpen }: TaskCardProps) {
+  const isDone = (r: Review) => !!statuses.get(r.id)?.done;
+  return (
+    <div className={`group${g.reviews.every(isDone) ? ' finished' : ''}`}>
+      <div className="group-head" onClick={onToggle}>
+        <div>
+          <div className="group-title">
+            <span className="kind-chip task">TASK</span> {g.key}
+          </div>
+          <div className="meta">
+            {g.reviews.length} MR · {g.reviews.filter(isDone).length} gotowe · {new Set(g.reviews.map((r) => r.repo)).size} repo ·{' '}
+            {expanded ? 'zwiń ▴' : 'pokaż ▾'}
+          </div>
+        </div>
+        <button
+          className="primary small"
+          onClick={(e) => {
+            e.stopPropagation();
+            // Merged reviews can't be reviewed any more, unless nothing else is left.
+            const pending = g.reviews.filter((r) => r.state !== 'merged');
+            onOpen(pending.length ? pending : g.reviews);
+          }}
+        >
+          Review całości
+        </button>
+      </div>
+      {expanded &&
+        g.reviews.map((r, i) => {
+          // The ones after this review first, then wrap around to the ones before it.
+          const queue = [...g.reviews.slice(i + 1), ...g.reviews.slice(0, i)].filter((o) => o.state !== 'merged' && !isDone(o));
+          return <ReviewRow key={r.id} review={r} status={statuses.get(r.id)} onClick={() => onOpen([r], queue)} />;
+        })}
+    </div>
+  );
+}
+
+/**
+ * Feed items: reviews sharing a ticket key (or, without one, a source branch) become one task,
+ * placed where its most recently updated review would be.
+ */
+function groupFeed(reviews: Review[]): InboxItem[] {
+  const keyOf = (r: Review) => jiraKey(r) ?? `branch:${r.sourceBranch}`;
+  const byKey = new Map<string, Review[]>();
+  for (const r of reviews) byKey.set(keyOf(r), [...(byKey.get(keyOf(r)) ?? []), r]);
+  const items: InboxItem[] = [];
+  const placed = new Set<string>();
+  for (const r of reviews) {
+    const key = keyOf(r);
+    const group = byKey.get(key)!;
+    if (group.length === 1) items.push({ kind: 'review', review: r });
+    else if (!placed.has(key)) {
+      placed.add(key);
+      items.push({
+        kind: 'task',
+        task: { key: key.replace(/^branch:/, ''), reviews: group },
+      });
+    }
+  }
+  return items;
 }
 
 function timeAgo(ms: number) {
@@ -278,6 +326,7 @@ function WatchedFeed({ providers, onOpen, onOpenSettings }: Props) {
   const [reviews, setReviews] = useState<Review[] | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
+  const [open, setOpen] = useState<string | null>(null);
   const statuses = useStatuses(reviews);
   const list = useMemo(() => Object.values(providers) as ReviewProvider[], [providers]);
 
@@ -339,27 +388,43 @@ function WatchedFeed({ providers, onOpen, onOpenSettings }: Props) {
         </div>
       ))}
       {reviews.length === 0 && <div className="empty">Brak MR z ostatnich {days} dni.</div>}
-      {reviews.map((r) => (
-        <ReviewRow key={r.id} review={r} status={statuses.get(r.id)} onClick={() => onOpen([r])}>
-          <div className="meta">
-            Aktualizacja {timeAgo(updatedAt(r))}
-            {r.state === 'open' && (
-              <>
-                {' · '}
-                <button
-                  className="link small"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    openFeature(r);
-                  }}
-                >
-                  + MR z tym samym branchem
-                </button>
-              </>
-            )}
-          </div>
-        </ReviewRow>
-      ))}
+      {groupFeed(reviews).map((item) => {
+        if (item.kind === 'task') {
+          const g = item.task;
+          return (
+            <TaskCard
+              key={g.key}
+              task={g}
+              statuses={statuses}
+              expanded={open === g.key}
+              onToggle={() => setOpen(open === g.key ? null : g.key)}
+              onOpen={(rs, queue) => onOpen(rs, g.key, queue)}
+            />
+          );
+        }
+        const r = item.review;
+        return (
+          <ReviewRow key={r.id} review={r} status={statuses.get(r.id)} onClick={() => onOpen([r])}>
+            <div className="meta">
+              Aktualizacja {timeAgo(updatedAt(r))}
+              {r.state === 'open' && (
+                <>
+                  {' · '}
+                  <button
+                    className="link small"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openFeature(r);
+                    }}
+                  >
+                    + MR z tym samym branchem
+                  </button>
+                </>
+              )}
+            </div>
+          </ReviewRow>
+        );
+      })}
       <button className="secondary" disabled={loadingMore} onClick={() => setDays((d) => d * 2)}>
         {loadingMore ? 'Ładuję…' : `Pokaż starsze (ostatnie ${days * 2} dni)`}
       </button>

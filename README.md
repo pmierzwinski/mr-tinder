@@ -39,6 +39,7 @@ Przy otwartym MR w zakładce „Obserwowane” jest „+ MR z tym samym branchem
 W ⚙︎ wybierasz repozytoria albo cały projekt (grupa GitLaba / organizacja lub konto GitHuba — wpisz np. `wings-of-heroes`)
 do obserwowania; projekt obejmuje też repozytoria dodane do niego później; zakładka „Obserwowane” pokazuje ich MR (otwarte i zmergowane)
 zaktualizowane w ostatnich 2 dniach, a „Pokaż starsze” podwaja ten okres.
+MR z tym samym kluczem Jiry (albo, bez klucza, z tym samym branchem) są złączone w jeden task, jak w „Do review”.
 MR z obejrzanymi wszystkimi plikami, ale bez Twojego approve, ma fioletową ramkę „👁 Obejrzane” (stan trzymany na urządzeniu,
 po nowym pushu zmienia się na „są nowe zmiany”).
 
